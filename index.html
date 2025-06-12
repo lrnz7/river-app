@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Pemetaan Sungai Jabodetabekjur - Aplikasi peta interaktif untuk melihat sungai di wilayah Jakarta dan sekitarnya" />
+  <title>Pemetaan Sungai Jabodetabekjur</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Search and Controls Container -->
+  <div class="controls-container">
+    <!-- Search Box -->
+    <div class="search-container" role="search">
+      <input 
+        type="text" 
+        id="search" 
+        placeholder="Cari nama sungai..." 
+        aria-label="Cari sungai"
+      />
+      <button id="search-btn" aria-label="Cari">
+        <span class="button-text">Cari</span>
+      </button>
+    </div>
+
+    <!-- Export Button -->
+    <button 
+      id="export-btn" 
+      class="export-button" 
+      title="Export GeoJSON" 
+      aria-label="Export data sungai ke GeoJSON"
+    >
+      Export GeoJSON
+    </button>
+  </div>
+
+  <!-- Loading Spinner -->
+  <div id="loading-spinner" class="loading-spinner" aria-hidden="true">
+    <div class="spinner" role="progressbar"></div>
+    <p>Memuat data sungai...</p>
+  </div>
+
+  <!-- Map Container -->
+  <div id="map" role="application" aria-label="Peta sungai Jabodetabekjur"></div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="main.js" defer></script>
+</body>
+</html>

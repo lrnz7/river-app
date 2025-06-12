@@ -1,0 +1,188 @@
+/* Base styles - Define fundamental styling for the entire page */
+body, html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: Arial, sans-serif;
+}
+
+/* Map container - Full screen map display */
+#map {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+}
+
+/* Controls container - Top-level container for search and export controls */
+.controls-container {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 1000;
+  pointer-events: none; /* Allow clicks to pass through to map */
+}
+
+/* Search container - Search input and button styling */
+.search-container {
+  position: absolute;
+  left: 0;
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  pointer-events: auto; /* Re-enable pointer events */
+}
+
+.search-container input {
+  padding: 8px 12px;
+  width: 220px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.search-container input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.search-container button {
+  padding: 8px 16px;
+  margin-left: 5px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.search-container button:hover {
+  background-color: #0056b3;
+}
+
+/* Export button - GeoJSON export functionality */
+.export-button {
+  position: absolute;
+  right: 0;
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.2s ease;
+  pointer-events: auto; /* Re-enable pointer events */
+}
+
+.export-button:hover {
+  background: #218838;
+}
+
+/* Loading spinner - Shows while data is being loaded */
+.loading-spinner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2000;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 20px 30px;
+  border-radius: 10px;
+  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  display: none;
+}
+
+.loading-spinner.visible {
+  display: block;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 15px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #007bff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-spinner p {
+  margin: 0;
+  color: #333;
+  font-size: 14px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Leaflet custom controls - Custom map control buttons */
+.leaflet-control-custom {
+  background: white;
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+  text-align: center;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.leaflet-control-custom:hover {
+  background: #f8f9fa;
+}
+
+/* Responsive design - Mobile and tablet adaptations */
+@media (max-width: 768px) {
+  .search-container {
+    position: relative;
+    width: calc(100% - 20px);
+    margin-bottom: 10px;
+  }
+
+  .search-container input {
+    width: calc(100% - 90px);
+  }
+
+  .export-button {
+    position: relative;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .controls-container {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Accessibility focus styles - Better keyboard navigation */
+button:focus,
+input:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+/* River highlight styles - Animation for selected rivers */
+.river-highlight {
+  animation: riverPulse 2s infinite;
+}
+
+@keyframes riverPulse {
+  0% { stroke-width: 2; opacity: 0.7; }
+  50% { stroke-width: 4; opacity: 1; }
+  100% { stroke-width: 2; opacity: 0.7; }
+}
