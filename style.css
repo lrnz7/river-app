@@ -1,188 +1,252 @@
-/* Base styles - Define fundamental styling for the entire page */
+/* Base styles - Enhanced with boundary controls */
 body, html {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  font-family: Arial, sans-serif;
+  margin: 0; /* Menghilangkan margin default browser */
+  padding: 0; /* Menghilangkan padding default browser */
+  height: 100%; /* Membuat tinggi body dan html penuh sesuai viewport */
+  font-family: Arial, sans-serif; /* Mengatur jenis font dasar */
 }
 
 /* Map container - Full screen map display */
 #map {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 1;
+  position: absolute; /* Mengatur posisi absolut agar bisa memenuhi layar */
+  top: 0; /* Jarak dari atas 0 */
+  bottom: 0; /* Jarak dari bawah 0 */
+  left: 0; /* Jarak dari kiri 0 */
+  right: 0; /* Jarak dari kanan 0 */
+  z-index: 1; /* Mengatur z-index agar peta berada di bawah elemen kontrol */
 }
 
-/* Controls container - Top-level container for search and export controls */
+/* Enhanced controls container - Now supports boundary controls */
 .controls-container {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
-  z-index: 1000;
-  pointer-events: none; /* Allow clicks to pass through to map */
+  position: absolute; /* Mengatur posisi absolut */
+  top: 10px; /* Jarak dari atas 10px */
+  left: 10px; /* Jarak dari kiri 10px */
+  right: 10px; /* Jarak dari kanan 10px */
+  z-index: 1000; /* Mengatur z-index agar kontrol berada di atas peta */
+  pointer-events: none; /* Awalnya tidak bisa diklik, agar event klik bisa tembus ke peta */
+  display: flex; /* Menggunakan Flexbox untuk tata letak elemen di dalamnya */
+  flex-wrap: wrap; /* Memungkinkan elemen untuk wrap ke baris berikutnya jika tidak muat */
+  gap: 10px; /* Jarak antar elemen flex item */
 }
 
-/* Search container - Search input and button styling */
+/* Search container - Existing search functionality */
 .search-container {
-  position: absolute;
-  left: 0;
-  background: white;
-  padding: 10px;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  pointer-events: auto; /* Re-enable pointer events */
+  background: white; /* Latar belakang putih */
+  padding: 10px; /* Padding di dalam container */
+  border-radius: 8px; /* Sudut membulat */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); /* Efek bayangan */
+  pointer-events: auto; /* Memungkinkan interaksi mouse/klik */
+  display: flex; /* Menggunakan Flexbox untuk input dan tombol search */
+  align-items: center; /* Menyelaraskan item secara vertikal di tengah */
+  gap: 5px; /* Jarak antar item di dalam search container */
 }
 
 .search-container input {
-  padding: 8px 12px;
-  width: 220px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
+  padding: 8px 12px; /* Padding dalam input */
+  width: 220px; /* Lebar input */
+  border: 1px solid #ccc; /* Border abu-abu tipis */
+  border-radius: 4px; /* Sudut membulat */
+  font-size: 14px; /* Ukuran font */
 }
 
 .search-container input:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+  outline: none; /* Menghilangkan outline default saat fokus */
+  border-color: #007bff; /* Mengubah warna border saat fokus */
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); /* Efek shadow saat fokus */
 }
 
 .search-container button {
-  padding: 8px 16px;
-  margin-left: 5px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s ease;
+  padding: 8px 16px; /* Padding tombol */
+  background-color: #007bff; /* Warna latar belakang biru */
+  color: white; /* Warna teks putih */
+  border: none; /* Menghilangkan border */
+  border-radius: 4px; /* Sudut membulat */
+  cursor: pointer; /* Mengubah kursor menjadi pointer saat di atas tombol */
+  font-size: 14px; /* Ukuran font */
+  transition: background-color 0.2s ease; /* Transisi halus untuk perubahan warna latar belakang */
+  white-space: nowrap; /* Mencegah teks tombol pecah baris */
 }
 
 .search-container button:hover {
-  background-color: #0056b3;
+  background-color: #0056b3; /* Warna latar belakang saat hover */
 }
 
-/* Export button - GeoJSON export functionality */
-.export-button {
-  position: absolute;
-  right: 0;
-  background: #28a745;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  transition: background-color 0.2s ease;
-  pointer-events: auto; /* Re-enable pointer events */
+/* NEW: Boundary selector container */
+.boundary-selector-container {
+  background: white; /* Latar belakang putih */
+  padding: 10px; /* Padding di dalam container */
+  border-radius: 8px; /* Sudut membulat */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); /* Efek bayangan */
+  pointer-events: auto; /* Memungkinkan interaksi mouse/klik */
 }
 
-.export-button:hover {
-  background: #218838;
+.boundary-selector {
+  padding: 8px 12px; /* Padding dalam select */
+  width: 200px; /* Lebar select */
+  border: 1px solid #ccc; /* Border abu-abu tipis */
+  border-radius: 4px; /* Sudut membulat */
+  font-size: 14px; /* Ukuran font */
+  background: white; /* Latar belakang putih */
+  cursor: pointer; /* Mengubah kursor menjadi pointer */
 }
 
-/* Loading spinner - Shows while data is being loaded */
+.boundary-selector:focus {
+  outline: none; /* Menghilangkan outline default saat fokus */
+  border-color: #dc3545; /* Mengubah warna border saat fokus */
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.25); /* Efek shadow saat fokus */
+}
+
+.boundary-selector option {
+  padding: 5px; /* Padding untuk setiap opsi di dropdown */
+}
+
+/* DIHAPUS: Export button styles tidak lagi dibutuhkan */
+
+/* Loading spinner - Enhanced for better UX */
 .loading-spinner {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 2000;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 20px 30px;
-  border-radius: 10px;
-  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.2);
-  text-align: center;
-  display: none;
+  position: fixed; /* Posisi tetap di viewport */
+  top: 50%; /* Tengah vertikal */
+  left: 50%; /* Tengah horizontal */
+  transform: translate(-50%, -50%); /* Menggeser elemen agar benar-benar di tengah */
+  z-index: 2000; /* Z-index tertinggi agar selalu di atas */
+  background: rgba(255, 255, 255, 0.95); /* Latar belakang putih transparan */
+  padding: 20px 30px; /* Padding */
+  border-radius: 10px; /* Sudut membulat */
+  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.2); /* Efek bayangan */
+  text-align: center; /* Teks di tengah */
+  display: none; /* Awalnya disembunyikan */
+  flex-direction: column; /* Menggunakan flexbox untuk mengatur spinner dan teks */
+  align-items: center; /* Menyelaraskan item secara vertikal di tengah */
+  justify-content: center; /* Menyelaraskan item secara horizontal di tengah */
 }
 
 .loading-spinner.visible {
-  display: block;
+  display: flex; /* Menampilkan spinner saat class 'visible' ditambahkan */
 }
 
 .spinner {
-  width: 40px;
-  height: 40px;
-  margin: 0 auto 15px;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #007bff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+  width: 40px; /* Lebar spinner */
+  height: 40px; /* Tinggi spinner */
+  margin: 0 auto 15px; /* Margin bawah */
+  border: 4px solid #f3f3f3; /* Border abu-abu muda */
+  border-top: 4px solid #007bff; /* Border atas biru (untuk efek putar) */
+  border-radius: 50%; /* Membuat bentuk lingkaran */
+  animation: spin 1s linear infinite; /* Animasi putar */
 }
 
 .loading-spinner p {
-  margin: 0;
-  color: #333;
-  font-size: 14px;
+  margin: 0; /* Menghilangkan margin default paragraf */
+  color: #333; /* Warna teks abu-abu gelap */
+  font-size: 14px; /* Ukuran font */
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% { transform: rotate(0deg); } /* Mulai dari 0 derajat */
+  100% { transform: rotate(360deg); } /* Berakhir di 360 derajat (satu putaran penuh) */
 }
 
-/* Leaflet custom controls - Custom map control buttons */
+/* Enhanced custom controls - Support for boundary controls */
 .leaflet-control-custom {
-  background: white;
-  width: 34px;
-  height: 34px;
-  line-height: 34px;
-  text-align: center;
-  border-radius: 4px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-  cursor: pointer;
-  transition: background-color 0.2s ease;
+  background: white; /* Latar belakang putih */
+  width: 34px; /* Lebar tombol kontrol */
+  height: 34px; /* Tinggi tombol kontrol */
+  line-height: 34px; /* Mengatur tinggi baris agar ikon di tengah vertikal */
+  text-align: center; /* Mengatur teks/ikon di tengah horizontal */
+  border-radius: 4px; /* Sudut membulat */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* Efek bayangan */
+  cursor: pointer; /* Mengubah kursor menjadi pointer */
+  transition: all 0.2s ease; /* Transisi halus untuk semua properti yang berubah */
+  font-size: 16px; /* Ukuran font ikon */
 }
 
 .leaflet-control-custom:hover {
-  background: #f8f9fa;
+  background: #f8f9fa; /* Warna latar belakang saat hover */
+  transform: scale(1.05); /* Sedikit membesar saat hover */
 }
 
-/* Responsive design - Mobile and tablet adaptations */
-@media (max-width: 768px) {
-  .search-container {
-    position: relative;
-    width: calc(100% - 20px);
-    margin-bottom: 10px;
-  }
-
-  .search-container input {
-    width: calc(100% - 90px);
-  }
-
-  .export-button {
-    position: relative;
-    width: 100%;
-    margin-top: 10px;
-  }
-
-  .controls-container {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-  }
+.leaflet-control-custom.active {
+  background: #007bff; /* Warna latar belakang biru saat aktif */
+  color: white; /* Warna teks putih saat aktif */
 }
 
-/* Accessibility focus styles - Better keyboard navigation */
-button:focus,
-input:focus {
-  outline: 2px solid #007bff;
-  outline-offset: 2px;
+/* NEW: Boundary-specific styles (animasi pulse, saat ini tidak digunakan secara langsung) */
+.boundary-highlight {
+  animation: boundaryPulse 3s infinite;
 }
 
-/* River highlight styles - Animation for selected rivers */
-.river-highlight {
-  animation: riverPulse 2s infinite;
+@keyframes boundaryPulse {
+  0% { stroke-width: 2; fill-opacity: 0.1; }
+  50% { stroke-width: 4; fill-opacity: 0.3; }
+  100% { stroke-width: 2; fill-opacity: 0.1; }
 }
 
-@keyframes riverPulse {
-  0% { stroke-width: 2; opacity: 0.7; }
-  50% { stroke-width: 4; opacity: 1; }
-  100% { stroke-width: 2; opacity: 0.7; }
+/* NEW: Legend/Info panel (optional) */
+.info-panel {
+  position: absolute; /* Posisi absolut */
+  bottom: 20px; /* Jarak dari bawah 20px */
+  left: 20px; /* Jarak dari kiri 20px */
+  background: rgba(255, 255, 255, 0.9); /* Latar belakang putih transparan */
+  padding: 10px 15px; /* Padding */
+  border-radius: 8px; /* Sudut membulat */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); /* Efek bayangan */
+  font-size: 12px; /* Ukuran font */
+  max-width: 200px; /* Lebar maksimum */
+  z-index: 1000; /* Z-index di atas peta */
+  pointer-events: auto; /* Memungkinkan interaksi mouse/klik */
+}
+
+.info-panel h4 {
+  margin: 0 0 8px 0; /* Margin bawah untuk judul */
+  font-size: 14px; /* Ukuran font judul */
+  color: #333; /* Warna teks judul */
+}
+
+.info-panel .legend-item {
+  display: flex; /* Menggunakan Flexbox untuk setiap item legenda */
+  align-items: center; /* Menyelaraskan item secara vertikal di tengah */
+  gap: 8px; /* Jarak antar elemen dalam item legenda */
+  margin: 4px 0; /* Margin vertikal untuk setiap item */
+}
+
+.info-panel .legend-color {
+  width: 20px; /* Lebar kotak warna */
+  height: 3px; /* Tinggi kotak warna */
+  border-radius: 2px; /* Sudut membulat pada kotak warna */
+}
+
+.river-legend { background: #007bff; } /* Warna biru untuk sungai (default) */
+.boundary-legend { background: #dc3545; } /* Warna merah untuk batas kab/kota */
+.selected-boundary-legend { background: #ff6600; } /* Warna oranye untuk wilayah terpilih */
+
+/* NEW: Filter indicator */
+.filter-indicator {
+  position: absolute; /* Posisi absolut */
+  top: 60px; /* Jarak dari atas */
+  left: 10px; /* Jarak dari kiri */
+  background: rgba(255, 193, 7, 0.9); /* Latar belakang kuning transparan */
+  color: #856404; /* Warna teks coklat */
+  padding: 5px 10px; /* Padding */
+  border-radius: 4px; /* Sudut membulat */
+  font-size: 12px; /* Ukuran font */
+  font-weight: bold; /* Teks tebal */
+  z-index: 1000; /* Z-index */
+  display: none; /* Awalnya disembunyikan */
+  align-items: center; /* Menyelaraskan item secara vertikal di tengah */
+  gap: 8px; /* Jarak antar item */
+}
+
+.filter-indicator.active {
+  display: flex; /* Menampilkan indikator saat aktif */
+}
+
+/* NEW: Boundary info tooltip */
+.boundary-tooltip {
+  background: rgba(0, 0, 0, 0.8); /* Latar belakang hitam transparan */
+  color: white; /* Warna teks putih */
+  padding: 5px 8px; /* Padding */
+  border-radius: 4px; /* Sudut membulat */
+  font-size: 11px; /* Ukuran font */
+  pointer-events: none; /* Tidak bisa diklik */
+  position: absolute; /* Posisi absolut */
+  z-index: 1001; /* Z-index di atas yang lain */
 }

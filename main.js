@@ -1,672 +1,1335 @@
-// Main application namespace to avoid global scope pollution
-const RiverApp = {
-  // Map instance and layers - Core Leaflet map objects
+/**
+ * Peta Sungai Jabodetabek
+ *
+ * COMMAND LINE USAGE (Indonesian):
+ *
+ * 1. Setup awal:
+ * git clone <repo> && cd river-map
+ * npm install leaflet
+ *
+ * 2. Struktur file yang dibutuhkan:
+ * - index.html (dengan div map dan controls)
+ * - river.geojson (data sungai)
+ * - IDN_adm_2_kabkota.json (data batas kabupaten/kota yang lebih bagus, fokus Jabodetabek)
+ * - enhanced_css_boundaries.css (styling)
+ * - file ini sebagai main.js
+ *
+ * 3. Jalankan local server:
+ * python -m http.server 8000
+ * # atau
+ * npx serve .
+ *
+ * 4. Buka browser:
+ * http://localhost:8000
+ *
+ * FITUR UTAMA:
+ * - Peta sungai interaktif dengan Leaflet
+ * - Batas kabupaten/kota yang bisa di-toggle
+ * - Search sungai berdasarkan nama
+ * - Filter sungai berdasarkan wilayah administratif (kab/kota)
+ * - Responsive design untuk mobile
+ * - Loading spinner dan error handling
+ * - Ketebalan dan warna garis sungai dinamis dan lebih terlihat
+ */
+
+const EnhancedRiverApp = {
+  // === CORE PROPERTIES ===
   map: null,
   sungaiLayer: null,
-  
-  // Data storage - Arrays and maps to store processed river data
-  allFeatures: [],
-  normalizedNames: new Map(), // Maps normalized names to original features
-  
-  // DOM elements cache - Store references to HTML elements for better performance
+  kabkotaLayer: null,  // Layer untuk kabupaten/kota
+
+  // Data storage
+  allFeatures: [], // Data sungai
+  kabkotaFeatures: [],  // Data fitur kabupaten/kota
+  normalizedNames: new Map(), // Nama sungai yang dinormalisasi untuk pencarian
+
+  // UI elements cache
   elements: {
-    map: document.getElementById('map'),
-    search: document.getElementById('search'),
-    searchBtn: document.getElementById('search-btn'),
-    exportBtn: document.getElementById('export-btn'),
-    loadingSpinner: document.getElementById('loading-spinner')
+    map: null,
+    search: null,
+    searchBtn: null,
+    loadingSpinner: null,
+    boundarySelector: null,
+    filterIndicator: null
   },
 
-  // Mouse interaction state - Prevents flickering during hover events
+  // Interaction state
   isHovering: false,
   hoverTimeout: null,
-  currentHighlighted: null,
+  currentHighlighted: null, // Sungai yang sedang di-highlight
+  selectedBoundaryLayer: null, // Properti untuk layer batas yang sedang terpilih
 
-  // Initialize the application - Main entry point
-  init() {
-    console.log('Initializing River App...');
-    this.showLoading(true);
-    this.initMap();
-    this.loadData();
-    this.setupEventListeners();
-  },
-
-  // Initialize the Leaflet map - Sets up the base map with tiles and view
-  initMap() {
-    console.log('Setting up map...');
-    // Create map instance centered on Jabodetabekjur region (Jakarta and surrounding areas)
-    this.map = L.map('map').setView([-6.4, 106.8], 10);
-
-    // Add OpenStreetMap tile layer - Provides the background map imagery
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(this.map);
-
-    // Add custom controls - Reset view and toggle layer buttons
-    this.addMapControls();
-  },
-
-  // Add custom map controls - Creates custom buttons on the map
-  addMapControls() {
-    // Reset view control - Button to return map to original view
-    const resetViewControl = L.Control.extend({
-      options: { position: 'topleft' },
-      onAdd: () => {
-        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
-        container.innerHTML = '⟲';
-        container.title = 'Reset View';
-        container.onclick = () => {
-          console.log('Resetting map view');
-          this.map.setView([-6.4, 106.8], 10);
-        };
-        return container;
+  // Boundary system settings
+  boundarySettings: {
+    showBoundaries: true,
+    selectedBoundaryId: null,
+    styles: {
+      default: { // Style untuk batas kabupaten/kota (merah cerah)
+        color: '#dc3545',
+        weight: 3, // Default weight 3 untuk kab/kota
+        opacity: 0.6, // UBAH: Opasitas dikurangi dari 0.8 menjadi 0.6 agar tulisan di bawahnya sedikit terlihat
+        fillColor: 'transparent',
+        fillOpacity: 0.1,
+        dashArray: null // Garis solid untuk kab/kota
+      },
+      selected: { // Style saat boundary terpilih (oranye)
+        color: '#ff6600',
+        weight: 5, // Lebih tebal saat dipilih
+        opacity: 1, // Full opasitas saat terpilih agar jelas
+        fillColor: '#ff6600',
+        fillOpacity: 0.2,
+        dashArray: null
+      },
+      filtered: { // Style untuk boundary yang tidak terpilih saat filter aktif
+        color: '#6c757d', // Abu-abu
+        weight: 1,
+        opacity: 0.3,
+        fillColor: 'transparent',
+        fillOpacity: 0.05
       }
-    });
-
-    // Toggle river layer control - Button to show/hide all rivers
-    const toggleLayerControl = L.Control.extend({
-      options: { position: 'topleft' },
-      onAdd: () => {
-        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
-        container.innerHTML = '💧';
-        container.title = 'Toggle River Layer';
-        container.onclick = () => this.toggleRiverLayer();
-        return container;
-      }
-    });
-
-    // Add both controls to the map
-    this.map.addControl(new resetViewControl());
-    this.map.addControl(new toggleLayerControl());
-  },
-
-  // Toggle river layer visibility - Shows or hides all river lines
-  toggleRiverLayer() {
-    if (this.map.hasLayer(this.sungaiLayer)) {
-      console.log('Hiding river layer');
-      this.map.removeLayer(this.sungaiLayer);
-    } else {
-      console.log('Showing river layer');
-      this.map.addLayer(this.sungaiLayer);
     }
   },
 
-  // Load GeoJSON data - Fetches river data from external file
-  async loadData() {
-    console.log('Loading river data...');
+  // River display settings
+  riverSettings: {
+    showRivers: true,
+    styles: {
+      default: { // Warna sungai default menjadi biru terang
+        color: '#007bff', // Biru terang (default Leaflet)
+        weight: 3, // Ditebalkan agar lebih terlihat
+        opacity: 0.7 // UBAH: Opasitas dikurangi dari 0.8 menjadi 0.7 agar tulisan di bawahnya sedikit terlihat
+      },
+      highlighted: { // Warna sungai saat di-highlight menjadi biru gelap
+        color: '#004085', // Biru gelap (navy blue)
+        weight: 5, // Ditebalkan saat di-highlight
+        opacity: 1 // Full opasitas saat di-highlight agar jelas
+      },
+      filtered: { // Style sungai saat terfilter (abu-abu, lebih tipis)
+        color: '#6c757d',
+        weight: 1,
+        opacity: 0.3
+      }
+    }
+  },
+
+  // === INITIALIZATION ===
+
+  /**
+   * Inisialisasi aplikasi utama
+   * Dipanggil ketika DOM sudah ready
+   */
+  async init() {
+    console.log('🚀 Memulai Peta Sungai Jabodetabek...');
+
     try {
-      // Fetch the GeoJSON file containing river data
-      const response = await fetch('river.geojson');
-      const data = await response.json();
-      
-      console.log(`Loaded ${data.features.length} river features from GeoJSON`);
-      
-      // Process and merge features with similar names
-      this.processFeatures(data.features);
-      
-      // Create and add the river layer to map
-      this.createRiverLayer();
-      
-      // Hide loading spinner once everything is loaded
-      this.showLoading(false);
-      console.log('River data loaded successfully');
+      this.showLoading(true, 'Memuat aplikasi...');
+
+      this.cacheElements(); // Menyimpan referensi elemen DOM
+      this.initMap(); // Menginisialisasi peta Leaflet
+      this.setupControls(); // Menyiapkan kontrol UI (tombol, dropdown)
+      this.setupEventListeners(); // Mengatur event listener untuk interaksi user
+
+      await this.loadAllData(); // Memuat semua data sungai dan batas wilayah
+
+      this.showLoading(false); // Menyembunyikan loading spinner setelah semua dimuat
+      console.log('✅ Aplikasi berhasil dimuat');
+
     } catch (error) {
-      console.error('Error loading GeoJSON:', error);
-      this.showLoading(false);
-      alert('Error loading river data. Please try refreshing the page.');
+      console.error('❌ Error saat inisialisasi:', error);
+      this.showError('Gagal memuat aplikasi. Silakan refresh halaman.');
     }
   },
 
-  // FIXED: Process and merge features with improved name normalization
-  processFeatures(features) {
-    console.log('Processing and merging river features...');
-    
-    // Clear existing data before processing
-    this.normalizedNames.clear();
-    this.allFeatures = [];
+  /**
+   * Cache semua elemen DOM yang sering digunakan
+   */
+  cacheElements() {
+    console.log('📋 Menyimpan referensi elemen DOM...');
 
-    // Group features by NORMALIZED name with unique ID for unnamed rivers
-    const groupedFeatures = new Map();
-    let unnamedRiverCounter = 1;
-    
-    // Process each river feature from the GeoJSON
-    features.forEach((feature, index) => {
-      const originalName = feature.properties?.name || 'Sungai tanpa nama';
-      let groupKey;
-      
-      // Handle unnamed rivers separately to prevent grouping
-      if (!feature.properties?.name || feature.properties.name.trim() === '' || 
-          feature.properties.name.toLowerCase().includes('tanpa nama')) {
-        // Give each unnamed river a unique identifier
-        groupKey = `unnamed_river_${unnamedRiverCounter++}`;
-      } else {
-        // Use normalized name for named rivers
-        groupKey = this.normalizeName(originalName);
-      }
-      
-      // Debug logging for name normalization
-      if (index < 20) { // Log first 20 for debugging
-        console.log(`Original: "${originalName}" -> Normalized: "${groupKey}"`);
-      }
-      
-      // Group by the key (normalized name or unique ID for unnamed)
-      if (!groupedFeatures.has(groupKey)) {
-        groupedFeatures.set(groupKey, {
-          originalName: originalName,
-          features: [],
-          isUnnamed: groupKey.startsWith('unnamed_river_')
-        });
-      }
-      groupedFeatures.get(groupKey).features.push(feature);
-    });
-
-    console.log(`Grouped ${features.length} features into ${groupedFeatures.size} groups`);
-
-    // Process each group of features
-    for (const [groupKey, group] of groupedFeatures) {
-      try {
-        const riverFeatures = group.features;
-        const originalName = group.originalName;
-        const isUnnamed = group.isUnnamed;
-        let finalFeature;
-        
-        // Log merging information for debugging
-        if (riverFeatures.length > 1 && !isUnnamed) {
-          const allNames = [...new Set(riverFeatures.map(f => f.properties?.name).filter(Boolean))];
-          console.log(`Merging ${riverFeatures.length} segments for "${originalName}":`, allNames);
-        }
-        
-        if (riverFeatures.length === 1 || isUnnamed) {
-          // Single feature or unnamed river - use directly
-          finalFeature = riverFeatures[0];
-          finalFeature.properties.name = originalName;
-          
-          // Add unique ID for unnamed rivers to distinguish them
-          if (isUnnamed) {
-            finalFeature.properties.uniqueId = groupKey;
-          }
-        } else {
-          // Multiple named features - merge them into one connected river
-          const validFeatures = riverFeatures.filter(f => 
-            f.geometry && 
-            (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString')
-          );
-
-          if (validFeatures.length === 0) {
-            console.warn(`No valid geometries for ${originalName}`);
-            continue;
-          }
-
-          // Try to connect line segments intelligently
-          const connectedCoordinates = this.connectLineSegments(validFeatures);
-
-          // Create merged feature with connected geometry
-          finalFeature = {
-            type: 'Feature',
-            properties: {
-              name: originalName,
-              originalCount: riverFeatures.length,
-              normalizedName: this.normalizeName(originalName),
-              mergedNames: [...new Set(riverFeatures.map(f => f.properties?.name).filter(Boolean))]
-            },
-            geometry: {
-              type: 'MultiLineString',
-              coordinates: connectedCoordinates
-            }
-          };
-        }
-
-        this.allFeatures.push(finalFeature);
-      } catch (error) {
-        console.warn(`Error processing ${group.originalName}:`, error);
-        // Add features individually as fallback if merging fails
-        riverFeatures.forEach(feature => {
-          this.allFeatures.push(feature);
-        });
-      }
-    }
-
-    // Sort features alphabetically by name for consistent display
-    this.allFeatures.sort((a, b) => {
-      const nameA = a.properties?.name || '';
-      const nameB = b.properties?.name || '';
-      return nameA.localeCompare(nameB);
-    });
-
-    console.log(`Final result: ${this.allFeatures.length} processed river features`);
-  },
-
-  // Intelligently connect line segments to form continuous rivers
-  connectLineSegments(features) {
-    if (features.length === 1) {
-      const geom = features[0].geometry;
-      return geom.type === 'LineString' ? [geom.coordinates] : geom.coordinates;
-    }
-
-    // Extract all line segments
-    let segments = [];
-    features.forEach(feature => {
-      if (feature.geometry.type === 'LineString') {
-        segments.push(feature.geometry.coordinates);
-      } else if (feature.geometry.type === 'MultiLineString') {
-        segments = segments.concat(feature.geometry.coordinates);
-      }
-    });
-
-    if (segments.length <= 1) {
-      return segments;
-    }
-
-    // Try to connect segments by finding touching endpoints
-    const connectedSegments = [];
-    const used = new Set();
-
-    // Helper function to check if two points are close (within ~10 meters)
-    const arePointsClose = (p1, p2, tolerance = 0.0001) => {
-      return Math.abs(p1[0] - p2[0]) < tolerance && Math.abs(p1[1] - p2[1]) < tolerance;
+    this.elements = {
+      map: document.getElementById('map'),
+      search: document.getElementById('search'),
+      searchBtn: document.getElementById('search-btn'),
+      loadingSpinner: document.getElementById('loading-spinner')
     };
 
-    // Start with the first segment
-    let currentSegment = [...segments[0]];
-    used.add(0);
+    const required = ['map', 'search', 'searchBtn', 'loadingSpinner'];
+    const missing = required.filter(key => !this.elements[key]);
 
-    // Try to connect remaining segments
-    let foundConnection = true;
-    while (foundConnection && used.size < segments.length) {
-      foundConnection = false;
-      
-      const currentStart = currentSegment[0];
-      const currentEnd = currentSegment[currentSegment.length - 1];
-
-      // Look for a segment that connects to current segment
-      for (let i = 0; i < segments.length; i++) {
-        if (used.has(i)) continue;
-
-        const segmentStart = segments[i][0];
-        const segmentEnd = segments[i][segments[i].length - 1];
-
-        // Check if this segment connects to the end of current segment
-        if (arePointsClose(currentEnd, segmentStart)) {
-          // Connect to end: add segment points (skip first duplicate point)
-          currentSegment = currentSegment.concat(segments[i].slice(1));
-          used.add(i);
-          foundConnection = true;
-          break;
-        } else if (arePointsClose(currentEnd, segmentEnd)) {
-          // Connect to end: add reversed segment points (skip last duplicate point)
-          const reversedSegment = [...segments[i]].reverse();
-          currentSegment = currentSegment.concat(reversedSegment.slice(1));
-          used.add(i);
-          foundConnection = true;
-          break;
-        } else if (arePointsClose(currentStart, segmentEnd)) {
-          // Connect to start: prepend segment points (skip last duplicate point)
-          currentSegment = segments[i].slice(0, -1).concat(currentSegment);
-          used.add(i);
-          foundConnection = true;
-          break;
-        } else if (arePointsClose(currentStart, segmentStart)) {
-          // Connect to start: prepend reversed segment points (skip first duplicate point)
-          const reversedSegment = [...segments[i]].reverse();
-          currentSegment = reversedSegment.slice(0, -1).concat(currentSegment);
-          used.add(i);
-          foundConnection = true;
-          break;
-        }
-      }
+    if (missing.length > 0) {
+      throw new Error(`Elemen DOM tidak ditemukan: ${missing.join(', ')}`);
     }
-
-    // Add the main connected segment
-    connectedSegments.push(currentSegment);
-
-    // Add any remaining unconnected segments as separate lines
-    for (let i = 0; i < segments.length; i++) {
-      if (!used.has(i)) {
-        connectedSegments.push(segments[i]);
-      }
-    }
-
-    return connectedSegments;
   },
 
-  // Create and add the river layer to the map
-  createRiverLayer() {
-    console.log('Creating river layer...');
-    
-    // Create GeoJSON layer with all processed river features
-    this.sungaiLayer = L.geoJSON({ 
-      type: 'FeatureCollection', 
-      features: this.allFeatures 
-    }, {
-      // Default styling for all river lines
-      style: {
-        color: 'blue',
-        weight: 2,
-        opacity: 0.7
-      },
-      // Configure popup and hover behavior for each river
-      onEachFeature: (feature, layer) => {
-        const name = feature.properties?.name || 'Sungai tanpa nama';
-        
-        // FIXED: Simple popup content without merge information
-        const popupContent = `<strong>Nama Sungai:</strong> ${name}`;
-        
-        layer.bindPopup(popupContent);
-        
-        // Store default style for resetting
-        layer.defaultStyle = { color: 'blue', weight: 2, opacity: 0.7 };
-        
-        // FIXED: Improved hover effects with better cursor handling
-        layer.on({
-          mouseover: (e) => this.handleMouseOver(e.target),
-          mouseout: (e) => this.handleMouseOut(e.target),
-          click: (e) => this.onRiverClick(feature, e.target)
-        });
-      }
+  /**
+   * Inisialisasi peta Leaflet dengan konfigurasi dasar
+   */
+  initMap() {
+    console.log('🗺️  Menyiapkan peta...');
+
+    this.map = L.map(this.elements.map, {
+      center: [-6.4, 106.8], // Koordinat tengah peta (Depok/Jakarta)
+      zoom: 10,
+      zoomControl: true,
+      attributionControl: true
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Peta Sungai Jabodetabek'
     }).addTo(this.map);
-    
-    console.log('River layer created and added to map');
+
+    this.setupMapEvents();
+
+    console.log('✅ Peta berhasil diinisialisasi');
   },
 
-  // FIXED: Handle mouse over event with longer delay to reduce sensitivity
-  handleMouseOver(layer) {
-    // Clear any existing timeout
-    if (this.hoverTimeout) {
-      clearTimeout(this.hoverTimeout);
-      this.hoverTimeout = null;
-    }
-    
-    // Only highlight if not already hovering over this layer
-    if (this.currentHighlighted !== layer && !this.isHovering) {
-      // Set delay before highlighting to reduce cursor sensitivity
-      this.hoverTimeout = setTimeout(() => {
-        this.highlightRiver(layer, false);
-        this.currentHighlighted = layer;
-        this.isHovering = true;
-      }, 200); // 200ms delay before highlighting
-    }
-  },
+  /**
+   * Setup event handlers untuk interaksi peta
+   */
+  setupMapEvents() {
+    this.map.on('zoomend', () => {
+      const zoom = this.map.getZoom();
+      console.log(`🔍 Zoom level: ${zoom}`);
+      this.adjustStylesForZoom(zoom);
+    });
 
-  // FIXED: Handle mouse out event with longer delay to prevent flickering
-  handleMouseOut(layer) {
-    // Clear highlight timeout if mouse leaves before highlighting occurs
-    if (this.hoverTimeout) {
-      clearTimeout(this.hoverTimeout);
-      this.hoverTimeout = null;
-    }
-    
-    // Set a delay before resetting to prevent rapid flickering
-    this.hoverTimeout = setTimeout(() => {
-      if (this.currentHighlighted === layer) {
-        this.resetRiverStyle(layer);
-        this.currentHighlighted = null;
-        this.isHovering = false;
+    this.map.on('click', (e) => {
+      if (e.originalEvent.target === this.map.getContainer()) {
+        this.clearAllSelections();
       }
-    }, 300); // 300ms delay before resetting
+    });
   },
 
-  // Highlight specific river on map - Only highlights the clicked/searched river
-  highlightRiver(targetLayer, zoomToRiver = true) {
-    // Reset all rivers to default style first
-    if (this.sungaiLayer) {
-      this.sungaiLayer.eachLayer(layer => {
-        if (layer !== targetLayer) {
-          this.resetRiverStyle(layer);
+  /**
+   * Sesuaikan style layer berdasarkan zoom level
+   */
+  adjustStylesForZoom(zoom) {
+    if (!this.sungaiLayer) return;
+
+    // Menentukan ketebalan garis sungai berdasarkan level zoom
+    const riverWeight = zoom < 12 ? this.riverSettings.styles.default.weight : (zoom < 15 ? (this.riverSettings.styles.default.weight + 1) : (this.riverSettings.styles.default.weight + 2)); 
+
+    this.sungaiLayer.eachLayer(layer => {
+      if (!layer.isFiltered && !layer.isHighlighted) {
+        // Hanya sesuaikan weight; opacity tetap dari default style
+        layer.setStyle({ ...layer.options, weight: riverWeight });
+      } else if (layer.isHighlighted) {
+          // Jika sedang di-highlight, pastikan weight dan color-nya sesuai highlighted
+          layer.setStyle({ ...this.riverSettings.styles.highlighted });
+      } else if (layer.isFiltered) {
+          // Jika terfilter, pertahankan style filtered
+          layer.setStyle(this.riverSettings.styles.filtered);
+      }
+    });
+
+    // Menentukan ketebalan garis batas wilayah kabupaten/kota berdasarkan level zoom
+    const kabkotaWeight = zoom < 10 ? 2 : zoom < 13 ? 3 : 4;
+
+    if (this.kabkotaLayer && this.boundarySettings.showBoundaries) {
+      this.kabkotaLayer.eachLayer(layer => {
+        if (layer.feature.properties.id === this.boundarySettings.selectedBoundaryId) {
+            layer.setStyle(this.boundarySettings.styles.selected);
+        } else if (layer.isFiltered) {
+            layer.setStyle(this.boundarySettings.styles.filtered);
+        }
+        else {
+            // Terapkan style default dengan weight dinamis; opacity tetap dari default style
+            layer.setStyle({ ...this.boundarySettings.styles.default, weight: kabkotaWeight });
         }
       });
     }
-    
-    // Highlight only the target river with orange color
-    targetLayer.setStyle({
-      color: 'orange',
-      weight: 4,
-      opacity: 1
-    });
-    targetLayer.bringToFront();
-    
-    // Zoom to river if requested (usually for search results)
-    if (zoomToRiver) {
-      this.map.fitBounds(targetLayer.getBounds(), { padding: [20, 20] });
+  },
+
+  // === DATA LOADING ===
+
+  /**
+   * Load semua data yang dibutuhkan (rivers + boundaries)
+   */
+  async loadAllData() {
+    console.log('📂 Memuat data sungai dan batas wilayah...');
+
+    try {
+      this.showLoading(true, 'Memuat data sungai...');
+      await this.loadRiverData();
+
+      this.showLoading(true, 'Memuat data batas wilayah...');
+      await this.loadBoundaryData();
+
+      this.createAllLayers();
+
+      console.log(`✅ Berhasil memuat ${this.allFeatures.length} sungai dan ${this.kabkotaFeatures.length} kab/kota`);
+
+    } catch (error) {
+      console.error('❌ Error loading data:', error);
+      this.showError('Gagal memuat data utama. Silakan refresh halaman.');
+      throw error;
     }
-    
-    // Show popup with river information
-    targetLayer.openPopup();
   },
 
-  // Reset river style to default - Returns river to normal blue color
-  resetRiverStyle(layer) {
-    if (layer && layer.defaultStyle) {
-      layer.setStyle(layer.defaultStyle);
-      layer.closePopup();
+  /**
+   * Load data sungai dari GeoJSON file
+   */
+  async loadRiverData() {
+    try {
+      const response = await fetch('river.geojson');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.features || !Array.isArray(data.features)) {
+        throw new Error('Format data sungai tidak valid');
+      }
+
+      this.allFeatures = data.features;
+      this.processRiverFeatures();
+
+      console.log(`📊 Berhasil memuat ${this.allFeatures.length} feature sungai`);
+
+    } catch (error) {
+      console.warn('⚠️ Gagal memuat data sungai dari file, menggunakan data demo. Error:', error);
+      this.allFeatures = this.generateDemoRiverData();
+      this.processRiverFeatures();
     }
   },
 
-  // Handle river click event - Highlights and zooms to clicked river
-  onRiverClick(feature, layer) {
-    console.log(`Clicked on river: ${feature.properties?.name}`);
-    this.highlightRiver(layer, true); // true = zoom to river
-  },
+  /**
+   * Process dan normalize data sungai untuk pencarian
+   */
+  processRiverFeatures() {
+    console.log('🔄 Memproses feature sungai...');
 
-  // Set up event listeners - Connects UI elements to their functions
-  setupEventListeners() {
-    console.log('Setting up event listeners...');
-    
-    // Search button click event
-    this.elements.searchBtn.addEventListener('click', () => {
-      this.performSearch();
+    this.normalizedNames.clear();
+
+    this.allFeatures.forEach((feature, index) => {
+      const name = feature.properties?.name || feature.properties?.NAME || `Sungai ${index + 1}`;
+      const normalizedName = this.normalizeName(name);
+
+      this.normalizedNames.set(normalizedName, name);
+
+      feature.properties = {
+        ...feature.properties,
+        name: name,
+        normalizedName: normalizedName,
+        searchableText: `${name} ${feature.properties?.description || ''}`.toLowerCase()
+      };
     });
 
-    // Search input enter key event
-    this.elements.search.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        this.performSearch();
+    console.log(`✅ Berhasil memproses ${this.allFeatures.length} sungai dengan ${this.normalizedNames.size} nama unik`);
+  },
+
+  /**
+   * Load data batas wilayah administratif (sekarang hanya Kabkota)
+   */
+  async loadBoundaryData() {
+    console.log('📍 Memuat data batas wilayah kabupaten/kota...');
+
+    try {
+      const kabkotaResponse = await fetch('IDN_adm_2_kabkota.json');
+
+      this.kabkotaFeatures = [];
+
+      if (kabkotaResponse.ok) {
+        try {
+          const kabkotaData = await kabkotaResponse.json();
+          if (kabkotaData.features && Array.isArray(kabkotaData.features)) {
+            kabkotaData.features.forEach(feature => {
+              feature.properties.name = feature.properties.ADM2_EN || feature.properties.ADM1_EN; 
+              feature.properties.type = 'city';
+              feature.properties.admin_level = feature.properties.admin_level || 5;
+              feature.properties.id = feature.properties.ADM2_PCODE || feature.properties.name?.toLowerCase().replace(/\s/g, '-') || `kabkota-${feature.properties.ADM1_PCODE}`;
+            });
+            this.kabkotaFeatures.push(...kabkotaData.features);
+            console.log(`✅ Dimuat ${this.kabkotaFeatures.length} kab/kota dari IDN_adm_2_kabkota.json`);
+          } else {
+            console.warn('⚠️ Format data kabupaten/kota tidak valid dari IDN_adm_2_kabkota.json');
+          }
+        } catch (error) {
+          console.warn('⚠️ Error parsing data kab/kota dari IDN_adm_2_kabkota.json:', error);
+        }
+      } else {
+        console.warn('⚠️ Gagal memuat data kab/kota dari IDN_adm_2_kabkota.json:', kabkotaResponse.statusText || 'Network error');
+      }
+
+      if (this.kabkotaFeatures.length === 0) {
+        console.warn('⚠️ Tidak ada data batas wilayah kab/kota yang berhasil dimuat dari file. Menggunakan demo data sebagai fallback.');
+        this.kabkotaFeatures = this.generateDemoBoundaryData();
+      } else {
+        console.log(`✅ Total batas wilayah dimuat: ${this.kabkotaFeatures.length}`);
+      }
+
+    } catch (error) {
+      console.error('❌ Error umum saat memuat data batas wilayah kab/kota:', error);
+      console.warn('⚠️ Menggunakan demo data batas wilayah sebagai fallback karena error umum.');
+      this.kabkotaFeatures = this.generateDemoBoundaryData();
+    }
+  },
+
+  /**
+   * Generate demo data sungai (fallback)
+   */
+  generateDemoRiverData() {
+    return [
+      {
+        type: 'Feature',
+        properties: {
+          name: 'Ciliwung',
+          description: 'Sungai utama yang melewati Jakarta'
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [106.8456, -6.1744], [106.8234, -6.2088], [106.8123, -6.2456]
+          ]
+        }
+      },
+      {
+        type: 'Feature',
+        properties: {
+          name: 'Cisadane',
+          description: 'Sungai di wilayah Tangerang'
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [106.7456, -6.1234], [106.7234, -6.1456], [106.7123, -6.1789]
+          ]
+        }
+      }
+    ];
+  },
+
+  /**
+   * Generate demo data batas wilayah (fallback)
+   */
+  generateDemoBoundaryData() {
+    return [
+      {
+        type: 'Feature',
+        properties: {
+          name: 'Kota Depok (Demo)',
+          id: 'depok-demo',
+          type: 'city',
+          admin_level: 5
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [106.75, -6.35], [106.82, -6.35], [106.82, -6.45], [106.75, -6.45], [106.75, -6.35]
+          ]]
+        }
+      },
+      {
+        type: 'Feature',
+        properties: {
+          name: 'Jakarta Selatan (Demo)',
+          id: 'jaksel-demo',
+          type: 'city',
+          admin_level: 5,
+          parent: 'jakarta-demo'
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [106.78, -6.20], [106.86, -6.20], [106.86, -6.35], [106.78, -6.35], [106.78, -6.20]
+          ]]
+        }
+      }
+    ];
+  },
+
+  // === LAYER CREATION ===
+
+  /**
+   * Buat semua layer (rivers, kabkotas)
+   */
+  createAllLayers() {
+    console.log('🎨 Membuat layer peta...');
+
+    this.createRiverLayer(); // Membuat layer sungai
+
+    // Membuat layer untuk kabupaten/kota
+    this.kabkotaLayer = L.geoJSON({
+      type: 'FeatureCollection',
+      features: this.kabkotaFeatures
+    }, {
+      style: (feature) => {
+        return this.boundarySettings.styles.default;
+      },
+      onEachFeature: (feature, layer) => {
+        layer.feature.properties.layerType = 'city'; // Menandai layer ini sebagai 'city'
+        this.setupBoundaryInteractions(feature, layer); // Mengatur interaksi klik/hover
       }
     });
 
-    // Export button click event
-    this.elements.exportBtn.addEventListener('click', () => {
-      this.exportGeoJSON();
+    if (this.boundarySettings.showBoundaries) {
+      this.kabkotaLayer.addTo(this.map); // Tambahkan layer kab/kota ke peta
+    }
+
+    if (this.riverSettings.showRivers) {
+      this.sungaiLayer.addTo(this.map); // Pastikan layer sungai paling atas
+    }
+
+    // Mengatur z-index atau urutan layer secara eksplisit
+    this.sungaiLayer.bringToFront();
+    if (this.kabkotaLayer) {
+        this.kabkotaLayer.bringToBack(); // Kab/kota di bawah sungai
+        this.adjustStylesForZoom(this.map.getZoom()); // Panggil adjustStylesForZoom setelah layer ditambahkan dan diatur z-indexnya
+    }
+
+    console.log(`✅ Layer peta dibuat: Sungai, Kab/Kota (${this.kabkotaFeatures.length})`);
+  },
+
+  /**
+   * Buat layer sungai dengan styling dan interaksi
+   */
+  createRiverLayer() {
+    console.log('🌊 Membuat layer sungai...');
+
+    this.sungaiLayer = L.geoJSON({
+      type: 'FeatureCollection',
+      features: this.allFeatures
+    }, {
+      style: (feature) => {
+        const riverType = feature.properties?.type || 'normal';
+        return {
+          ...this.riverSettings.styles.default,
+          weight: riverType === 'major' ? this.riverSettings.styles.default.weight + 1 : this.riverSettings.styles.default.weight,
+          color: riverType === 'major' ? '#0056b3' : this.riverSettings.styles.default.color
+        };
+      },
+      onEachFeature: (feature, layer) => {
+        this.setupRiverInteractions(feature, layer);
+      }
     });
 
-    // Search input for autocomplete suggestions
+    console.log(`✅ Layer sungai dibuat dengan ${this.allFeatures.length} feature`);
+  },
+
+  /**
+   * Setup interaksi untuk setiap feature sungai
+   */
+  setupRiverInteractions(feature, layer) {
+    const name = feature.properties?.name || 'Unnamed River';
+    const description = feature.properties?.description || '';
+
+    const popupContent = `
+      <div class="river-popup">
+        <h4>🌊 ${name}</h4>
+        ${description ? `<p>${description}</p>` : ''}
+        <small>Klik untuk highlight | Klik dua kali untuk zoom</small>
+      </div>
+    `;
+
+    layer.bindPopup(popupContent);
+
+    layer.on({
+      click: (e) => this.onRiverClick(e, feature, layer),
+      dblclick: (e) => this.onRiverDoubleClick(e, feature, layer),
+      mouseover: (e) => this.onRiverMouseOver(e, feature, layer),
+      mouseout: (e) => this.onRiverMouseOut(e, feature, layer)
+    });
+  },
+
+  /**
+   * Setup interaksi untuk batas wilayah (sekarang hanya kab/kota)
+   */
+  setupBoundaryInteractions(feature, layer) {
+    // Tidak ada popup yang muncul saat mengklik boundary
+    layer.on({
+      click: (e) => this.onBoundaryClick(e, feature, layer),
+      mouseover: (e) => this.onBoundaryMouseOver(e, feature, layer),
+      mouseout: (e) => this.onBoundaryMouseOut(e, feature, layer)
+    });
+  },
+
+  // === CONTROLS & UI ===
+
+  /**
+   * Setup semua kontrol UI
+   */
+  setupControls() {
+    console.log('🎛️  Menyiapkan kontrol UI...');
+
+    this.createMapControls();
+    this.createBoundarySelector();
+    this.createFilterIndicator();
+    this.createInfoPanel();
+  },
+
+  /**
+   * Buat kontrol peta custom
+   */
+  createMapControls() {
+    const ResetViewControl = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd: () => {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+        container.innerHTML = '🏠';
+        container.title = 'Reset ke view awal';
+        container.onclick = () => this.resetMapView();
+        return container;
+      }
+    });
+
+    const BoundaryToggleControl = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd: () => {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+        container.innerHTML = '🗺️';
+        container.title = 'Toggle batas wilayah';
+        container.onclick = () => this.toggleBoundaries();
+        this.boundaryToggleBtn = container;
+        return container;
+      }
+    });
+
+    const RiverToggleControl = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd: () => {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+        container.innerHTML = '🌊';
+        container.title = 'Toggle layer sungai';
+        container.onclick = () => this.toggleRiverLayer();
+        this.riverToggleBtn = container;
+        return container;
+      }
+    });
+
+    this.map.addControl(new ResetViewControl());
+    this.map.addControl(new BoundaryToggleControl());
+    this.map.addControl(new RiverToggleControl());
+    
+    this.updateControlStates();
+  },
+
+  /**
+   * Buat dropdown selector untuk batas wilayah (sekarang hanya kab/kota)
+   */
+  createBoundarySelector() {
+    const controlsContainer = document.querySelector('.controls-container');
+    if (!controlsContainer) {
+      console.warn('⚠️ Container kontrol tidak ditemukan');
+      return;
+    }
+    
+    const selectorContainer = document.createElement('div');
+    selectorContainer.className = 'boundary-selector-container';
+    
+    const options = []; // UBAH: Menghapus opsi "<option value="">Semua Wilayah</option>"
+    
+    // Hanya menambahkan kabupaten/kota ke dropdown
+    if (this.kabkotaFeatures.length > 0) {
+      options.push('<optgroup label="Kota/Kabupaten">'); // Label grup untuk kab/kota
+      this.kabkotaFeatures.sort((a, b) => a.properties.name.localeCompare(b.properties.name)).forEach(f => {
+        options.push(`<option value="${f.properties.id}">${f.properties.name}</option>`); 
+      });
+      options.push('</optgroup>');
+    }
+    
+    selectorContainer.innerHTML = `
+      <select id="boundary-selector" class="boundary-selector" title="Pilih wilayah untuk filter">
+        ${options.join('')}
+      </select>
+    `;
+    
+    controlsContainer.appendChild(selectorContainer);
+    this.elements.boundarySelector = document.getElementById('boundary-selector');
+  },
+
+  /**
+   * Buat indikator filter yang aktif
+   */
+  createFilterIndicator() {
+    const indicator = document.createElement('div');
+    indicator.id = 'filter-indicator';
+    indicator.className = 'filter-indicator';
+    document.body.appendChild(indicator);
+    this.elements.filterIndicator = indicator;
+  },
+
+  /**
+   * Buat panel info/legenda (disesuaikan untuk hanya kab/kota)
+   */
+  createInfoPanel() {
+    const panel = document.createElement('div');
+    panel.className = 'info-panel';
+    panel.innerHTML = `
+      <h4>Legenda</h4>
+      <div class="legend-item">
+        <div class="legend-color river-legend"></div>
+        <span>Sungai</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color boundary-legend"></div>
+        <span>Batas Wilayah Kab/Kota</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color selected-boundary-legend"></div>
+        <span>Wilayah Terpilih</span>
+      </div>
+    `;
+    document.body.appendChild(panel);
+  },
+
+  // === EVENT HANDLERS ===
+
+  /**
+   * Setup semua event listener
+   */
+  setupEventListeners() {
+    console.log('🔗 Menyiapkan event listeners...');
+
+    this.elements.searchBtn.addEventListener('click', () => this.performSearch());
+    this.elements.search.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') this.performSearch();
+    });
     this.elements.search.addEventListener('input', (e) => {
       this.updateAutocomplete(e.target.value);
     });
+    
+    if (this.elements.boundarySelector) {
+      this.elements.boundarySelector.addEventListener('change', (e) => {
+        this.selectBoundary(e.target.value);
+      });
+    }
+
+    document.addEventListener('keydown', (e) => this.onKeyboardShortcut(e));
   },
 
-  // Perform river search - Finds and highlights only matching rivers
+  /**
+   * Handler untuk keyboard shortcuts
+   */
+  onKeyboardShortcut(e) {
+    if (e.ctrlKey && e.key === 'f') {
+      e.preventDefault();
+      this.elements.search.focus();
+    }
+    
+    if (e.key === 'Escape') {
+      this.clearAllSelections();
+    }
+  },
+
+  // === RIVER INTERACTIONS ===
+
+  onRiverClick(e, feature, layer) {
+    console.log(`🌊 River clicked: ${feature.properties.name}`);
+    this.highlightRiver(layer); // Memanggil highlightRiver untuk menangani highlight tunggal
+    L.DomEvent.stopPropagation(e);
+  },
+
+  onRiverDoubleClick(e, feature, layer) {
+    console.log(`🔍 Zooming to river: ${feature.properties.name}`);
+    this.map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+    L.DomEvent.stopPropagation(e);
+  },
+
+  onRiverMouseOver(e, feature, layer) {
+    // Jika sungai sudah di-highlight dari klik, jangan ubah style saat mouse over
+    if (layer.isHighlighted) return;
+    if (!this.isHovering) {
+      this.hoverTimeout = setTimeout(() => {
+        layer.setStyle(this.riverSettings.styles.highlighted);
+        this.isHovering = true;
+      }, 100);
+    }
+  },
+
+  onRiverMouseOut(e, feature, layer) {
+    if (this.hoverTimeout) {
+      clearTimeout(this.hoverTimeout);
+      this.hoverTimeout = null;
+    }
+    // Jika sungai sedang di-highlight dari klik, jangan reset style saat mouse out
+    if (layer.isHighlighted) return;
+
+    if (this.currentHighlighted !== layer) {
+      this.resetRiverStyle(layer); // Reset style jika bukan yang sedang di-highlight
+    }
+    this.isHovering = false;
+  },
+
+  // === BOUNDARY INTERACTIONS ===
+
+  onBoundaryClick(e, feature, layer) {
+    console.log(`🏛️ Boundary clicked: ${feature.properties.name}`);
+    // Tidak ada popup yang muncul saat mengklik boundary
+    L.DomEvent.stopPropagation(e);
+  },
+
+  onBoundaryMouseOver(e, feature, layer) {
+    if (layer.feature.properties.id === this.boundarySettings.selectedBoundaryId) {
+        return;
+    }
+    
+    let originalStyle = this.boundarySettings.styles.default;
+
+    layer.setStyle({
+        ...originalStyle,
+        weight: originalStyle.weight + 1,
+        fillOpacity: originalStyle.fillOpacity + 0.1
+    });
+  },
+
+  onBoundaryMouseOut(e, feature, layer) {
+    if (layer.feature.properties.id !== this.boundarySettings.selectedBoundaryId) {
+        const currentZoom = this.map.getZoom();
+        const kabkotaWeight = currentZoom < 10 ? 2 : currentZoom < 13 ? 3 : 4;
+        layer.setStyle({ ...this.boundarySettings.styles.default, weight: kabkotaWeight });
+    }
+  },
+
+  // === CORE FUNCTIONALITIES ===
+
+  /**
+   * Lakukan pencarian sungai berdasarkan nama
+   */
   performSearch() {
     const searchTerm = this.elements.search.value.trim();
-    console.log(`Searching for: "${searchTerm}"`);
     
     if (!searchTerm) {
-      // Reset all styles if search is empty
-      this.sungaiLayer.eachLayer(layer => this.resetRiverStyle(layer));
+      this.clearSearch();
       return;
     }
+
+    console.log(`🔍 Mencari: "${searchTerm}"`);
+    this.showLoading(true, 'Mencari sungai...');
 
     const normalizedSearch = this.normalizeName(searchTerm);
-    let foundLayers = [];
-    
-    // Search through all river layers
+    const matchedFeatures = [];
+    let exactMatch = null;
+
     this.sungaiLayer.eachLayer(layer => {
       const feature = layer.feature;
-      const name = feature.properties?.name || '';
-      const normalizedName = this.normalizeName(name);
+      const searchableText = feature.properties.searchableText || '';
       
-      // Also check merged names if they exist
-      const mergedNames = feature.properties?.mergedNames || [];
-      const normalizedMergedNames = mergedNames.map(n => this.normalizeName(n));
-
-      // Better matching logic - exact match and partial match
-      const exactMatch = normalizedName === normalizedSearch;
-      const partialMatch = normalizedName.includes(normalizedSearch) || 
-                          normalizedMergedNames.some(n => n.includes(normalizedSearch));
-
-      if (exactMatch || partialMatch) {
-        foundLayers.push(layer);
+      if (searchableText.includes(normalizedSearch)) {
+        matchedFeatures.push({ feature, layer });
+        
+        if (feature.properties.normalizedName === normalizedSearch) {
+          exactMatch = { feature, layer };
+        }
       }
     });
 
-    if (foundLayers.length > 0) {
-      console.log(`Found ${foundLayers.length} matching rivers`);
-      
-      // Reset all rivers first
-      this.sungaiLayer.eachLayer(layer => this.resetRiverStyle(layer));
-      
-      // Highlight all matching rivers
-      foundLayers.forEach(layer => {
-        this.highlightRiver(layer, foundLayers.length === 1); // Only zoom if single result
-      });
-    } else {
-      console.log('No rivers found');
-      alert('Sungai tidak ditemukan');
-    }
-  },
+    this.showLoading(false);
 
-  // Update autocomplete suggestions - Shows dropdown with matching river names
-  updateAutocomplete(value) {
-    if (!value || value.length < 2) {
-      // Remove autocomplete when search is too short
-      this.elements.search.removeAttribute('list');
+    if (matchedFeatures.length === 0) {
+      this.showError(`Tidak ditemukan sungai dengan nama "${searchTerm}"`);
       return;
     }
 
-    const normalizedValue = this.normalizeName(value);
+    const targetResult = exactMatch || matchedFeatures[0];
     
-    // Remove existing datalist to prevent duplicates
-    let datalist = document.getElementById('river-suggestions');
-    if (datalist) datalist.remove();
-
-    // Create new datalist for autocomplete
-    datalist = document.createElement('datalist');
-    datalist.id = 'river-suggestions';
-
-    // Find matching river names (including merged names)
-    const suggestions = new Set();
+    this.highlightRiver(targetResult.layer); // Memanggil highlightRiver untuk single highlight
+    this.map.fitBounds(targetResult.layer.getBounds(), { padding: [50, 50] });
     
-    this.allFeatures.forEach(feature => {
-      const mainName = feature.properties?.name || '';
-      const mergedNames = feature.properties?.mergedNames || [mainName];
-      
-      // Check all names (main and merged) for matches
-      mergedNames.forEach(name => {
-        if (name && this.normalizeName(name).includes(normalizedValue)) {
-          suggestions.add(name);
-        }
-      });
-    });
-
-    // Add suggestions to datalist (limit to 10 suggestions)
-    [...suggestions].sort().slice(0, 10).forEach(name => {
-      const option = document.createElement('option');
-      option.value = name;
-      datalist.appendChild(option);
-    });
-
-    // Connect datalist to search input
-    document.body.appendChild(datalist);
-    this.elements.search.setAttribute('list', 'river-suggestions');
+    this.showSearchResults(matchedFeatures, searchTerm);
+    
+    console.log(`✅ Ditemukan ${matchedFeatures.length} hasil untuk "${searchTerm}"`);
   },
 
-  // Export GeoJSON data - Downloads filtered or all river data
-  exportGeoJSON() {
-    const searchTerm = this.elements.search.value.trim();
-    let features = this.allFeatures;
+  /**
+   * Highlight hasil pencarian (Sekarang hanya akan highlight satu hasil utama)
+   */
+  highlightSearchResults(matchedFeatures) {
+    console.log('ℹ️ highlightSearchResults dipanggil, namun logic highlight utama kini di highlightRiver.');
+  },
 
-    console.log(`Exporting GeoJSON${searchTerm ? ` for search: "${searchTerm}"` : ' (all rivers)'}`);
+  /**
+   * Tampilkan info hasil pencarian
+   */
+  showSearchResults(matchedFeatures, searchTerm) {
+    const resultCount = matchedFeatures.length;
+    const resultText = resultCount === 1 ? 'sungai' : 'sungai';
+    
+    this.showInfo(`Ditemukan ${resultCount} ${resultText} untuk "${searchTerm}"`);
+    
+    if (matchedFeatures.length > 0) {
+      matchedFeatures[0].layer.openPopup();
+    }
+  },
 
-    // Filter features if there's a search term
-    if (searchTerm) {
-      const normalizedSearch = this.normalizeName(searchTerm);
-      features = features.filter(feature => {
-        const name = feature.properties?.name || '';
-        const mergedNames = feature.properties?.mergedNames || [name];
-        
-        return this.normalizeName(name).includes(normalizedSearch) ||
-               mergedNames.some(n => this.normalizeName(n).includes(normalizedSearch));
-      });
-      
-      console.log(`Filtered to ${features.length} features`);
+  /**
+   * Clear pencarian dan reset
+   */
+  clearSearch() {
+    console.log('🧹 Clearing search...');
+    this.elements.search.value = '';
+    this.clearAllHighlights();
+    this.hideInfo();
+  },
+
+  /**
+   * Highlight sungai tertentu (sekarang hanya satu sungai yang akan di-highlight)
+   */
+  highlightRiver(layer) {
+    // Jika sudah ada sungai yang di-highlight dan itu bukan layer yang sama
+    if (this.currentHighlighted && this.currentHighlighted !== layer) {
+      this.resetRiverStyle(this.currentHighlighted); // Reset style sungai yang lama
+      this.currentHighlighted.isHighlighted = false; // Pastikan status isHighlighted direset
+    }
+    
+    // Set highlight baru
+    layer.setStyle(this.riverSettings.styles.highlighted);
+    layer.isHighlighted = true; // Menandai layer ini sedang di-highlight
+    this.currentHighlighted = layer; // Menyimpan referensi sungai yang baru di-highlight
+  },
+
+  /**
+   * Reset style sungai ke default (dinamis berdasarkan zoom)
+   */
+  resetRiverStyle(layer) {
+    // Dapatkan weight dinamis saat ini berdasarkan zoom
+    const currentZoom = this.map.getZoom();
+    const riverWeight = currentZoom < 12 ? this.riverSettings.styles.default.weight : (currentZoom < 15 ? (this.riverSettings.styles.default.weight + 1) : (this.riverSettings.styles.default.weight + 2));
+
+    if (layer.isFiltered) {
+      layer.setStyle(this.riverSettings.styles.filtered);
+    } else {
+      // Terapkan style default dengan weight dinamis saat ini
+      // Menggunakan spread operator agar properti lain dari default style (misal color, opacity) tetap terjaga
+      layer.setStyle({ ...this.riverSettings.styles.default, weight: riverWeight });
+    }
+    layer.isHighlighted = false; // Pastikan status isHighlighted direset
+  },
+
+  /**
+   * Reset style boundary ke default (sekarang hanya untuk kab/kota)
+   */
+  resetBoundaryStyle(layer) {
+    const currentZoom = this.map.getZoom();
+    const kabkotaWeight = currentZoom < 10 ? 2 : currentZoom < 13 ? 3 : 4;
+    layer.setStyle({ ...this.boundarySettings.styles.default, weight: kabkotaWeight });
+  },
+
+  /**
+   * Clear semua highlight dari sungai
+   */
+  clearAllHighlights() {
+    if (!this.sungaiLayer) return;
+    
+    this.sungaiLayer.eachLayer(layer => {
+      this.resetRiverStyle(layer); // Memanggil resetRiverStyle untuk setiap sungai
+    });
+    
+    this.currentHighlighted = null;
+  },
+
+  /**
+   * Clear semua seleksi (highlight sungai, seleksi batas wilayah, pencarian)
+   */
+  clearAllSelections() {
+    this.clearAllHighlights();
+    this.clearBoundarySelection();
+    this.clearSearch();
+    this.map.closePopup();
+  },
+
+  // === BOUNDARY MANAGEMENT ===
+
+  /**
+   * Pilih boundary berdasarkan ID (sekarang hanya kab/kota)
+   */
+  selectBoundary(boundaryId) {
+    console.log(`🏛️ Selecting boundary: ${boundaryId}`);
+    
+    this.clearBoundarySelection(); // Membersihkan seleksi sebelumnya
+    
+    // Jika ID kosong, ini berarti tidak ada wilayah yang dipilih, maka reset filter
+    // Catatan: Karena opsi "Semua Wilayah" dihapus, ini hanya akan terpanggil jika boundaryId sengaja kosong
+    if (!boundaryId) { 
+      this.clearRiverFilter();
+      this.boundarySettings.selectedBoundaryId = null;
+      // Perbarui dropdown menjadi tidak ada pilihan (jika memungkinkan)
+      if (this.elements.boundarySelector) {
+        this.elements.boundarySelector.selectedIndex = -1; // -1 untuk tidak ada pilihan
+      }
+      return;
+    }
+    
+    let selectedFeature = null;
+    let selectedLayer = null;
+
+    // Mencari layer di kabkotaLayer
+    this.kabkotaLayer.eachLayer(layer => {
+        if (layer.feature.properties.id === boundaryId) {
+            selectedFeature = layer.feature;
+            selectedLayer = layer;
+            return true; // Keluar dari eachLayer setelah ditemukan
+        }
+    });
+    
+    if (!selectedLayer) {
+      console.warn(`⚠️ Boundary tidak ditemukan: ${boundaryId}`);
+      return;
+    }
+    
+    selectedLayer.setStyle(this.boundarySettings.styles.selected);
+    this.selectedBoundaryLayer = selectedLayer;
+    this.boundarySettings.selectedBoundaryId = boundaryId;
+    
+    this.filterRiversByBoundary(selectedFeature);
+    
+    this.map.fitBounds(selectedLayer.getBounds(), { padding: [20, 20] });
+    
+    this.updateFilterIndicator(selectedFeature.properties.name);
+    
+    if (this.elements.boundarySelector) {
+      this.elements.boundarySelector.value = boundaryId; // Update dropdown
+    }
+  },
+
+  /**
+   * Clear boundary selection
+   */
+  clearBoundarySelection() {
+    if (this.kabkotaLayer) {
+        this.kabkotaLayer.eachLayer(layer => {
+            this.resetBoundaryStyle(layer); // Reset style tiap layer kab/kota
+        });
     }
 
-    // Create GeoJSON object
-    const geoJSON = {
-      type: 'FeatureCollection',
-      features: features,
-      metadata: {
-        exportDate: new Date().toISOString(),
-        searchTerm: searchTerm || null,
-        totalFeatures: features.length
-      }
-    };
-
-    // Create and trigger download
-    const blob = new Blob([JSON.stringify(geoJSON, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = searchTerm ? `rivers_${searchTerm.replace(/\s+/g, '_')}.geojson` : 'rivers_all.geojson';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    this.selectedBoundaryLayer = null;
+    this.boundarySettings.selectedBoundaryId = null;
+    this.hideFilterIndicator();
     
-    console.log('GeoJSON export completed');
+    if (this.elements.boundarySelector) {
+      // Mengatur ulang dropdown menjadi pilihan kosong (tidak ada)
+      this.elements.boundarySelector.selectedIndex = -1; // UBAH: Pilih index -1 untuk tidak ada yang terpilih
+    }
+    this.clearRiverFilter();
   },
 
-  // FIXED: Much better normalize river name for comparison - handles "Ci Liwung" vs "ciliwung"
-  normalizeName(name) {
-    if (!name) return '';
+  /**
+   * Filter sungai berdasarkan boundary (batas wilayah kab/kota)
+   */
+  filterRiversByBoundary(boundaryFeature) {
+    if (!this.sungaiLayer || !boundaryFeature) return;
     
-    let normalized = name
-      .toLowerCase() // Convert to lowercase first
-      .trim()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, ''); // Remove diacritics
+    console.log(`🔄 Filtering rivers by boundary: ${boundaryFeature.properties.name}`);
     
-    // IMPROVED: Remove all non-alphanumeric characters aggressively BEFORE prefix removal
-    // This turns "Ci Liwung" into "ciliwung" and "ciliwung" into "ciliwung"
-    normalized = normalized
-      .replace(/[^a-z0-9]/g, ''); // Remove all non-alphanumeric characters (including spaces)
+    const boundaryGeom = boundaryFeature.geometry;
+    let insideCount = 0;
+    let totalCount = 0;
     
-    // Now, define prefixes to remove from the already cleaned string
-    // The prefixes themselves should be stripped of spaces/special chars as well for matching
-    const prefixesToRemove = [
-      'sungai',
-      'kali',
-      'ci', // Now "ci" will match "ciliwung" if it starts with "ci"
-      'k',
-      's',
-      'bendung',
-      'saluran'
-    ];
-    
-    // Iterate and remove prefixes if they are at the beginning of the normalized string
-    prefixesToRemove.forEach(prefix => {
-      // Use a regex to match the prefix at the start of the string
-      // The 'i' flag is not needed here as we already lowercased the string
-      const regex = new RegExp('^' + prefix); 
-      normalized = normalized.replace(regex, '');
+    this.sungaiLayer.eachLayer(layer => {
+      totalCount++;
+      const riverGeom = layer.feature.geometry;
+      
+      const isInside = this.checkGeometryIntersection(riverGeom, boundaryGeom);
+      
+      if (isInside) {
+        layer.setStyle(this.riverSettings.styles.default); // Sungai di dalam area filter
+        layer.isFiltered = false;
+        insideCount++;
+      } else {
+        layer.setStyle(this.riverSettings.styles.filtered); // Sungai di luar area filter (samar)
+        layer.isFiltered = true;
+      }
     });
     
-    // Final trim just in case (though highly unlikely with this approach)
-    normalized = normalized.trim();
-    
-    console.log(`Name normalization: "${name}" -> "${normalized}"`);
-    return normalized;
+    // Samarkan kab/kota lain yang tidak terpilih
+    this.kabkotaLayer.eachLayer(layer => {
+        if (layer.feature.properties.id !== boundaryFeature.properties.id) {
+            layer.setStyle(this.boundarySettings.styles.filtered); // Samarkan kab/kota lain
+        } else {
+            layer.setStyle(this.boundarySettings.styles.selected); // Biarkan yang terpilih tetap highlight
+        }
+    });
+
+    this.showInfo(`Menampilkan ${insideCount} sungai dalam ${boundaryFeature.properties.name}`);
   },
 
-  // Show/hide loading spinner - Controls loading animation visibility
-  showLoading(show) {
-    this.elements.loadingSpinner.style.display = show ? 'block' : 'none';
-    console.log(`Loading spinner: ${show ? 'shown' : 'hidden'}`);
+  /**
+   * Clear filter sungai, mengembalikan semua sungai ke style default
+   */
+  clearRiverFilter() {
+    if (!this.sungaiLayer) return;
+    
+    console.log('🧹 Clearing river filter...');
+    
+    this.sungaiLayer.eachLayer(layer => {
+      this.resetRiverStyle(layer);
+      layer.isFiltered = false;
+    });
+
+    // Reset style semua boundary layer kabkota
+    if (this.kabkotaLayer) {
+        this.kabkotaLayer.eachLayer(layer => {
+            this.resetBoundaryStyle(layer);
+        });
+    }
+    
+    this.hideInfo();
+  },
+
+  /**
+   * Check apakah geometry intersect (simplified)
+   */
+  checkGeometryIntersection(lineGeom, polygonGeom) {
+    if (lineGeom.type !== 'LineString' || polygonGeom.type !== 'Polygon') {
+      return false;
+    }
+    
+    const polyCoords = polygonGeom.coordinates[0];
+    const lineCoords = lineGeom.coordinates;
+    
+    return lineCoords.some(coord => this.pointInPolygon(coord, polyCoords));
+  },
+
+  /**
+   * Point in polygon test (ray casting algorithm)
+   */
+  pointInPolygon(point, polygon) {
+    const [x, y] = point;
+    let inside = false;
+    
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const [xi, yi] = polygon[i];
+      const [xj, yj] = polygon[j];
+      
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    
+    return inside;
+  },
+
+  // === LAYER TOGGLES ===
+
+  /**
+   * Toggle visibility (sembunyikan/tampilkan) boundary layer (sekarang hanya mengontrol layer kab/kota)
+   */
+  toggleBoundaries() {
+    this.boundarySettings.showBoundaries = !this.boundarySettings.showBoundaries;
+    
+    if (this.boundarySettings.showBoundaries) {
+      if (this.kabkotaLayer) this.map.addLayer(this.kabkotaLayer);
+      console.log('👁️ Boundary layer (Kab/Kota) shown');
+    } else {
+      if (this.kabkotaLayer) this.map.removeLayer(this.kabkotaLayer);
+      console.log('👁️‍🗨️ Boundary layer (Kab/Kota) hidden');
+    }
+    
+    this.updateControlStates();
+  },
+
+  /**
+   * Toggle visibility (sembunyikan/tampilkan) river layer
+   */
+  toggleRiverLayer() {
+    this.riverSettings.showRivers = !this.riverSettings.showRivers;
+    
+    if (this.riverSettings.showRivers) {
+      this.map.addLayer(this.sungaiLayer);
+      console.log('👁️ River layer shown');
+    } else {
+      this.map.removeLayer(this.sungaiLayer);
+      console.log('👁️‍🗨️ River layer hidden');
+    }
+    
+    this.updateControlStates();
+  },
+
+  /**
+   * Reset map view ke posisi awal
+   */
+  resetMapView() {
+      console.log('🏠 Resetting map view...');
+      this.map.setView([-6.4, 106.8], 10);
+      this.clearAllSelections();
+  },
+
+  /**
+   * Update state tombol kontrol (mengubah opacity berdasarkan visibility layer)
+   */
+  updateControlStates() {
+    if (this.boundaryToggleBtn) {
+      this.boundaryToggleBtn.style.opacity = this.boundarySettings.showBoundaries ? '1' : '0.5';
+    }
+    
+    if (this.riverToggleBtn) {
+      this.riverToggleBtn.style.opacity = this.riverSettings.showRivers ? '1' : '0.5';
+    }
+  },
+
+  // === EXPORT FUNCTIONALITY ===
+  // DIHAPUS: Fungsi exportGeoJSON dan semua referensinya tidak lagi dibutuhkan
+
+  // === AUTOCOMPLETE ===
+
+  /**
+   * Update autocomplete suggestions untuk input pencarian
+   */
+  updateAutocomplete(searchValue) {
+    if (!searchValue || searchValue.length < 2) {
+      this.hideAutocomplete();
+      return;
+    }
+    
+    const normalizedSearch = this.normalizeName(searchValue);
+    const suggestions = [];
+    
+    this.normalizedNames.forEach((originalName, normalizedName) => {
+      if (normalizedName.includes(normalizedSearch) && suggestions.length < 5) {
+        suggestions.push(originalName);
+      }
+    });
+    
+    if (suggestions.length > 0) {
+      this.showAutocomplete(suggestions);
+    } else {
+      this.hideAutocomplete();
+    }
+  },
+
+  /**
+   * Show autocomplete dropdown
+   */
+  showAutocomplete(suggestions) {
+    let dropdown = document.getElementById('search-autocomplete');
+    
+    if (!dropdown) {
+      dropdown = document.createElement('div');
+      dropdown.id = 'search-autocomplete';
+      dropdown.className = 'search-autocomplete';
+      this.elements.search.parentNode.appendChild(dropdown);
+    }
+    
+    const items = suggestions.map(name => 
+      `<div class="autocomplete-item" onclick="EnhancedRiverApp.selectAutocomplete('${name}')">${name}</div>`
+    ).join('');
+    
+    dropdown.innerHTML = items;
+    dropdown.style.display = 'block';
+  },
+
+  /**
+   * Hide autocomplete dropdown
+   */
+  hideAutocomplete() {
+    const dropdown = document.getElementById('search-autocomplete');
+    if (dropdown) {
+      dropdown.style.display = 'none';
+    }
+  },
+
+  /**
+   * Select item dari autocomplete, mengisi input dan menjalankan pencarian
+   */
+  selectAutocomplete(name) {
+    this.elements.search.value = name;
+    this.hideAutocomplete();
+    this.performSearch();
+  },
+
+  // === UI FEEDBACK ===
+
+  /**
+   * Show loading indicator
+   */
+  showLoading(show, message = 'Loading...') {
+    if (this.elements.loadingSpinner) {
+      this.elements.loadingSpinner.style.display = show ? 'flex' : 'none';
+      if (show && message) {
+        this.elements.loadingSpinner.textContent = message;
+      }
+    }
+  },
+
+  /**
+   * Show error message (notifikasi)
+   */
+  showError(message) {
+    console.error('❌', message);
+    this.showNotification(message, 'error');
+  },
+
+  /**
+   * Show info message (notifikasi)
+   */
+  showInfo(message) {
+    console.log('ℹ️', message);
+    this.showNotification(message, 'info');
+  },
+
+  /**
+   * Show notification (pesan singkat di layar)
+   */
+  showNotification(message, type = 'info') {
+    let notification = document.getElementById('notification');
+    if (!notification) {
+      notification = document.createElement('div');
+      notification.id = 'notification';
+      notification.className = 'notification';
+      document.body.appendChild(notification);
+    }
+    
+    notification.textContent = message;
+    notification.className = `notification ${type} show`;
+    
+    setTimeout(() => {
+      notification.classList.remove('show');
+    }, 3000);
+  },
+
+  /**
+   * Hide info message (notifikasi)
+   */
+  hideInfo() {
+    const notification = document.getElementById('notification');
+    if (notification) {
+      notification.classList.remove('show');
+    }
+  },
+
+  /**
+   * Update filter indicator (pesan di bawah search box yang menunjukkan filter aktif)
+   */
+  updateFilterIndicator(boundaryName) {
+    if (this.elements.filterIndicator) {
+      this.elements.filterIndicator.innerHTML = `
+        <span>🔍 Filter aktif: ${boundaryName}</span>
+        <button onclick="EnhancedRiverApp.clearBoundarySelection()" class="clear-filter-btn">✕</button>
+      `;
+      this.elements.filterIndicator.style.display = 'flex';
+    }
+  },
+
+  /**
+   * Hide filter indicator
+   */
+  hideFilterIndicator() {
+    if (this.elements.filterIndicator) {
+      this.elements.filterIndicator.style.display = 'none';
+    }
+  },
+
+  // === UTILITIES ===
+
+  /**
+   * Normalize nama untuk pencarian (menghilangkan karakter non-alfanumerik, mengubah ke lowercase)
+   */
+  normalizeName(name) {
+    return name.toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 };
 
-// Initialize application when DOM is loaded - Entry point
+// === INITIALIZATION ===
+
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM loaded, initializing River App...');
-  RiverApp.init();
+  console.log('🎯 DOM ready, initializing Peta Sungai Jabodetabek...');
+  EnhancedRiverApp.init().catch(error => {
+    console.error('💥 Failed to initialize app:', error);
+  });
 });
+
+window.EnhancedRiverApp = EnhancedRiverApp;
