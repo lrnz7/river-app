@@ -1,0 +1,3 @@
+# Python virtual environments
+venv/
+.venv/ # Kadang nama folder venv bisa juga .venv
