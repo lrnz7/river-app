@@ -10,7 +10,6 @@ const EnhancedRiverApp = {
   highlightedRiverLayer: null,
   // Layer untuk menyimpan batas wilayah yang sedang di-highlight/dipilih
   selectedBoundaryLayer: null,
-  // NEW: filteredRiverHighlightLayer DIHAPUS karena garis oranye akan dihilangkan
 
   // Data mentah sungai dari GeoJSON
   allRiverData: null,
@@ -21,8 +20,12 @@ const EnhancedRiverApp = {
   // List nama sungai untuk autocomplete
   riverNames: [],
 
-  // NEW: Variabel untuk menyimpan fitur batas wilayah yang sedang aktif difilter
+  // Variabel untuk menyimpan fitur batas wilayah yang sedang aktif difilter
   activeFilterBoundary: null, // Null jika tidak ada filter aktif
+
+  // NEW: Status visibilitas layer
+  isRiverLayerVisible: true,
+  isBoundaryLayerVisible: true,
 
   // Objek untuk menyimpan referensi elemen DOM yang sering diakses
   elements: {
@@ -38,7 +41,12 @@ const EnhancedRiverApp = {
     sidebarRiverDescription: null,
     sidebarRiverLength: null,
     sidebarRiverCities: null,
-    sidebarCloseBtn: null
+    sidebarCloseBtn: null,
+    // NEW: Elemen Layer Control Panel
+    controlsContainer: null, // Untuk pengecekan klik di luar
+    resetViewBtn: null,
+    toggleRiverLayerCheckbox: null,
+    toggleBoundaryLayerCheckbox: null
   },
 
   // === INITIALIZATION ===
@@ -91,14 +99,20 @@ const EnhancedRiverApp = {
       sidebarRiverDescription: document.getElementById('sidebar-river-description'),
       sidebarRiverLength: document.getElementById('sidebar-river-length'),
       sidebarRiverCities: document.getElementById('sidebar-river-cities'),
-      sidebarCloseBtn: document.querySelector('.sidebar-close-btn')
+      sidebarCloseBtn: document.querySelector('.sidebar-close-btn'),
+      // Elemen Layer Control Panel
+      controlsContainer: document.querySelector('.controls-container'), // Untuk pengecekan klik di luar
+      resetViewBtn: document.getElementById('reset-view-btn'),
+      toggleRiverLayerCheckbox: document.getElementById('toggle-river-layer'),
+      toggleBoundaryLayerCheckbox: document.getElementById('toggle-boundary-layer')
     };
 
     // Periksa apakah semua elemen penting ditemukan
     const required = [
       'map', 'search', 'searchBtn', 'loadingSpinner', 'boundarySelector',
       'filterIndicator', 'autocompleteResults', 'riverSidebar', 'sidebarCloseBtn',
-      'sidebarRiverName', 'sidebarRiverDescription', 'sidebarRiverLength', 'sidebarRiverCities'
+      'sidebarRiverName', 'sidebarRiverDescription', 'sidebarRiverLength', 'sidebarRiverCities',
+      'controlsContainer', 'resetViewBtn', 'toggleRiverLayerCheckbox', 'toggleBoundaryLayerCheckbox'
     ];
     const missing = required.filter(key => !this.elements[key]);
 
@@ -117,14 +131,19 @@ const EnhancedRiverApp = {
     // Tambahkan tile layer (peta dasar) dari OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      // Atribusi default Leaflet + OpenStreetMap + Copyright Lorenzo Calvin
+      attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; 2025 Lorenzo Calvin'
     }).addTo(this.map);
+
+    // NEW: Tambahkan skala interaktif ke peta
+    // imperial: false berarti menggunakan satuan metrik (meter, kilometer)
+    L.control.scale({ imperial: false }).addTo(this.map);
 
     // Setup event listener untuk perubahan zoom peta
     this.map.on('zoomend', () => this.adjustStylesForZoom());
     // Setup event listener untuk klik di peta (untuk clear selection)
-    this.map.on('click', () => {
-      // Hanya clear all jika klik bukan di sidebar atau kontrol
+    this.map.on('click', (event) => {
+      // Hanya clear all jika klik bukan di sidebar atau kontrol UI
       if (!this.elements.riverSidebar.contains(event.target) && !this.elements.controlsContainer.contains(event.target)) {
          this.clearAllSelections();
       }
@@ -242,14 +261,23 @@ const EnhancedRiverApp = {
     if (this.sungaiLayer) this.sungaiLayer.bringToFront();
   },
 
-  // Fungsi untuk setup kontrol UI (dropdown filter)
+  // Fungsi untuk setup kontrol UI (dropdown filter dan layer control)
   setupControls() {
     console.log('⚙️ Menyiapkan kontrol UI...');
-    // Tambahkan referensi controlsContainer ke elements cache
-    this.elements.controlsContainer = document.querySelector('.controls-container');
-    if (!this.elements.controlsContainer) {
-        console.warn("Elemen .controls-container tidak ditemukan.");
-    }
+    // Menambahkan referensi controlsContainer ke elements cache (sudah ada di cacheElements)
+
+    // Event listener untuk tombol Reset View
+    this.elements.resetViewBtn.addEventListener('click', () => this.resetMapView());
+
+    // Event listener untuk checkbox toggle layer sungai
+    this.elements.toggleRiverLayerCheckbox.addEventListener('change', (e) => {
+      this.toggleRiverLayer(e.target.checked);
+    });
+
+    // Event listener untuk checkbox toggle layer batas wilayah
+    this.elements.toggleBoundaryLayerCheckbox.addEventListener('change', (e) => {
+      this.toggleBoundaryLayer(e.target.checked);
+    });
   },
 
   // Fungsi untuk memuat semua data (sungai dan batas wilayah)
@@ -260,13 +288,21 @@ const EnhancedRiverApp = {
       const riverResponse = await fetch('river.geojson');
       if (!riverResponse.ok) throw new Error('Gagal memuat river.geojson');
       this.allRiverData = await riverResponse.json();
-      this.createRiverLayer(this.allRiverData); // Buat layer sungai
+      // Awalnya tambahkan layer sungai ke peta jika checkbox default checked
+      this.createRiverLayer(this.allRiverData); 
+      if (!this.elements.toggleRiverLayerCheckbox.checked) {
+        this.map.removeLayer(this.sungaiLayer);
+      }
 
       // Muat data batas wilayah dari IDN_adm_2_kabkota.json
       const boundaryResponse = await fetch('IDN_adm_2_kabkota.json');
       if (!boundaryResponse.ok) throw new Error('Gagal memuat IDN_adm_2_kabkota.json');
       this.allBoundaryData = await boundaryResponse.json();
-      this.createBoundaryLayer(this.allBoundaryData); // Buat layer batas wilayah
+      // Awalnya tambahkan layer batas wilayah ke peta jika checkbox default checked
+      this.createBoundaryLayer(this.allBoundaryData);
+      if (!this.elements.toggleBoundaryLayerCheckbox.checked) {
+        this.map.removeLayer(this.boundariesLayer);
+      }
       this.populateBoundarySelector(this.allBoundaryData); // Isi dropdown filter wilayah
 
       // Ambil nama-nama sungai untuk autocomplete
@@ -287,8 +323,9 @@ const EnhancedRiverApp = {
 
   // Fungsi untuk membuat layer sungai dari data GeoJSON
   createRiverLayer(geojson) {
-    if (this.sungaiLayer) {
-      this.map.removeLayer(this.sungaiLayer); // Hapus layer lama jika ada
+    // Hapus layer lama jika ada
+    if (this.sungaiLayer && this.map.hasLayer(this.sungaiLayer)) {
+      this.map.removeLayer(this.sungaiLayer);
     }
     this.sungaiLayer = L.geoJSON(geojson, {
       style: (feature) => {
@@ -316,14 +353,19 @@ const EnhancedRiverApp = {
           mouseout: (e) => this.onRiverMouseOut(e, feature, layer)
         });
       }
-    }).addTo(this.map);
+    });
+    // Hanya tambahkan ke peta jika isRiverLayerVisible
+    if (this.isRiverLayerVisible) {
+      this.sungaiLayer.addTo(this.map);
+    }
     this.adjustStylesForZoom(); // Sesuaikan style awal setelah layer dibuat
   },
 
   // Fungsi untuk membuat layer batas wilayah dari data GeoJSON
   createBoundaryLayer(geojson) {
-    if (this.boundariesLayer) {
-      this.map.removeLayer(this.boundariesLayer); // Hapus layer lama jika ada
+    // Hapus layer lama jika ada
+    if (this.boundariesLayer && this.map.hasLayer(this.boundariesLayer)) {
+      this.map.removeLayer(this.boundariesLayer);
     }
     this.boundariesLayer = L.geoJSON(geojson, {
       style: (feature) => {
@@ -357,7 +399,11 @@ const EnhancedRiverApp = {
           className: 'boundary-tooltip'
         });
       }
-    }).addTo(this.map);
+    });
+    // Hanya tambahkan ke peta jika isBoundaryLayerVisible
+    if (this.isBoundaryLayerVisible) {
+      this.boundariesLayer.addTo(this.map);
+    }
     this.adjustStylesForZoom(); // Sesuaikan style awal setelah layer dibuat
   },
 
@@ -386,14 +432,18 @@ const EnhancedRiverApp = {
     // Event listener untuk shortcut keyboard (misal: Esc untuk clear selection)
     document.addEventListener('keydown', (e) => this.onKeyboardShortcut(e));
 
-    // NEW: Event listener untuk tombol tutup sidebar
+    // Event listener untuk tombol tutup sidebar
     this.elements.sidebarCloseBtn.addEventListener('click', () => this.hideSidebar());
-    // NEW: Ini sudah diubah di initMap()
-    // this.map.on('click', (e) => {
-    //   if (e.originalEvent.target === this.map.getContainer()) {
-    //     this.clearAllSelections();
-    //   }
-    // });
+    // Event listener untuk tombol Reset View
+    this.elements.resetViewBtn.addEventListener('click', () => this.resetMapView());
+    // Event listener untuk checkbox toggle layer sungai
+    this.elements.toggleRiverLayerCheckbox.addEventListener('change', (e) => {
+      this.toggleRiverLayer(e.target.checked);
+    });
+    // Event listener untuk checkbox toggle layer batas wilayah
+    this.elements.toggleBoundaryLayerCheckbox.addEventListener('change', (e) => {
+      this.toggleBoundaryLayer(e.target.checked);
+    });
   },
 
   // Handler untuk shortcut keyboard
@@ -408,7 +458,6 @@ const EnhancedRiverApp = {
   // Handler saat sungai diklik
   onRiverClick(e, feature, layer) {
     console.log(`🌊 Sungai diklik: ${feature.properties.name}`);
-    // FIX: Jangan panggil clearAllHighlights() di sini.
     // Hanya reset highlight sungai sebelumnya jika ada dan berbeda
     if (this.highlightedRiverLayer && this.highlightedRiverLayer !== layer) {
         this.sungaiLayer.resetStyle(this.highlightedRiverLayer);
@@ -455,9 +504,7 @@ const EnhancedRiverApp = {
   // Handler saat batas wilayah diklik
   onBoundaryClick(e, feature, layer) {
     console.log(`📍 Batas wilayah diklik: ${feature.properties.NAMOBJ}`);
-    // FIX: Jangan panggil clearAllSelections() di sini.
-    // Panggil selectBoundary untuk mengaktifkan highlight dan filter wilayah
-    this.selectBoundary(feature.properties.NAMOBJ);
+    this.selectBoundary(feature.properties.NAMOBJ); // Panggil selectBoundary untuk mengaktifkan filter
     L.DomEvent.stopPropagation(e);
   },
 
@@ -497,9 +544,9 @@ const EnhancedRiverApp = {
   // Fungsi untuk melakukan pencarian sungai
   performSearch() {
     const searchTerm = this.elements.search.value.trim();
-    // FIX: Jangan panggil clearAllSelections() di awal.
     // Kita hanya akan mereset highlight sungai, bukan wilayah
-    this.clearRiverHighlight(); // Hanya reset highlight sungai
+    this.clearRiverHighlight(); 
+    this.hideSidebar(); // Tutup sidebar saat pencarian baru
 
     if (!searchTerm) {
       this.showError('Masukkan nama sungai untuk mencari.');
@@ -574,13 +621,13 @@ const EnhancedRiverApp = {
     this.elements.search.value = '';
     this.elements.autocompleteResults.innerHTML = '';
     this.elements.autocompleteResults.style.display = 'none';
-    this.clearRiverHighlight(); // NEW: Hanya clear highlight sungai
+    this.clearRiverHighlight(); // Hanya clear highlight sungai
     console.log('🗑️ Pencarian dibersihkan.');
   },
 
   // Fungsi untuk highlight sungai di peta
   highlightRiver(layer) {
-    // NEW: Hanya clear highlight sungai sebelumnya
+    // Hanya clear highlight sungai sebelumnya
     this.clearRiverHighlight();
 
     this.highlightedRiverLayer = layer;
@@ -593,7 +640,7 @@ const EnhancedRiverApp = {
     layer.bringToFront();
   },
 
-  // NEW: Fungsi untuk membersihkan highlight sungai saja
+  // Fungsi untuk membersihkan highlight sungai saja
   clearRiverHighlight() {
     if (this.highlightedRiverLayer) {
       this.sungaiLayer.resetStyle(this.highlightedRiverLayer);
@@ -604,7 +651,7 @@ const EnhancedRiverApp = {
 
   // Fungsi untuk highlight batas wilayah di peta
   highlightBoundary(layer) {
-    // NEW: Hanya clear highlight batas wilayah sebelumnya
+    // Hanya clear highlight batas wilayah sebelumnya
     this.clearBoundaryHighlight();
 
     this.selectedBoundaryLayer = layer;
@@ -618,7 +665,7 @@ const EnhancedRiverApp = {
     // Tidak perlu bringToFront() di sini, order layer diatur di loadAllData() dan adjustStylesForZoom()
   },
 
-  // NEW: Fungsi untuk membersihkan highlight batas wilayah saja
+  // Fungsi untuk membersihkan highlight batas wilayah saja
   clearBoundaryHighlight() {
     if (this.selectedBoundaryLayer) {
         this.boundariesLayer.resetStyle(this.selectedBoundaryLayer);
@@ -631,15 +678,13 @@ const EnhancedRiverApp = {
   clearAllHighlights() { // Fungsi ini akan dipanggil oleh clearAllSelections()
     this.clearRiverHighlight();
     this.clearBoundaryHighlight();
-    // NEW: filteredRiverHighlightLayer sudah dihapus, jadi ini tidak ada lagi
-    // if (this.filteredRiverHighlightLayer) { ... }
     this.adjustStylesForZoom();
     console.log('✨ Semua highlight dibersihkan.');
   },
 
-  // Fungsi untuk memilih batas wilayah dari dropdown
+  // Fungsi untuk memilih batas wilayah dari dropdown atau klik peta
   selectBoundary(boundaryName) {
-    // FIX: Hanya clear highlight sungai dan sidebar, tidak semua
+    // Hanya clear highlight sungai dan sidebar, tidak semua
     this.clearRiverHighlight();
     this.hideSidebar();
 
@@ -652,7 +697,7 @@ const EnhancedRiverApp = {
     // Set dropdown value (jika belum terpilih atau beda)
     this.elements.boundarySelector.value = boundaryName;
 
-    if (!boundaryName) { // Jika "Pilih Wilayah" dipilih
+    if (!boundaryName) { // Jika "Pilih Wilayah" dipilih (value="")
       this.clearBoundarySelection();
       return;
     }
@@ -689,7 +734,7 @@ const EnhancedRiverApp = {
     
     this.activeFilterBoundary = null; // Hapus batas wilayah aktif
     this.clearBoundaryHighlight(); // Hanya clear highlight batas wilayah
-    // NEW: Reset isIntersectingWithActiveFilter untuk semua sungai
+    // Reset isIntersectingWithActiveFilter untuk semua sungai
     if (this.sungaiLayer) {
         this.sungaiLayer.eachLayer(layer => {
             layer.isIntersectingWithActiveFilter = false;
@@ -743,13 +788,13 @@ const EnhancedRiverApp = {
 
   // Fungsi untuk membersihkan semua seleksi (highlight, filter, search, sidebar)
   clearAllSelections() {
-    this.clearRiverHighlight(); // Hanya highlight sungai
-    this.clearBoundaryHighlight(); // Hanya highlight batas wilayah
+    this.clearRiverHighlight();
+    this.clearBoundaryHighlight();
     this.clearBoundarySelection(); // Ini juga membersihkan activeFilterBoundary
-    this.clearSearch(); // Ini juga membersihkan highlight sungai (jika ada)
+    this.clearSearch();
     this.map.closePopup();
     this.hideSidebar();
-    // NEW: Pastikan semua isIntersectingWithActiveFilter direset
+    // Pastikan semua isIntersectingWithActiveFilter direset
     if (this.sungaiLayer) {
         this.sungaiLayer.eachLayer(layer => {
             layer.isIntersectingWithActiveFilter = false;
@@ -757,6 +802,58 @@ const EnhancedRiverApp = {
     }
     this.adjustStylesForZoom(); // Panggil terakhir untuk memastikan semua style kembali normal
     console.log('🧹 Semua seleksi dibersihkan.');
+  },
+
+  // === LAYER CONTROL FUNCTIONS ===
+  // Fungsi untuk mereset tampilan peta ke awal
+  resetMapView() {
+    console.log('🏠 Mereset tampilan peta...');
+    this.map.setView([-6.2, 106.8], 10); // Koordinat tengah dan zoom awal
+    this.clearAllSelections(); // Bersihkan semua seleksi dan filter
+    // Pastikan checkbox layer kembali checked dan layer terlihat
+    this.elements.toggleRiverLayerCheckbox.checked = true;
+    this.toggleRiverLayer(true);
+    this.elements.toggleBoundaryLayerCheckbox.checked = true;
+    this.toggleBoundaryLayer(true);
+  },
+
+  // Fungsi untuk menampilkan/menyembunyikan layer sungai
+  toggleRiverLayer(show) {
+    this.isRiverLayerVisible = show;
+    if (this.sungaiLayer) {
+      if (show && !this.map.hasLayer(this.sungaiLayer)) {
+        this.sungaiLayer.addTo(this.map);
+        this.sungaiLayer.bringToFront(); // Pastikan sungai di depan
+      } else if (!show && this.map.hasLayer(this.sungaiLayer)) {
+        this.map.removeLayer(this.sungaiLayer);
+      }
+    }
+    // Jika layer sungai disembunyikan, otomatis clear highlight sungai
+    if (!show) {
+        this.clearRiverHighlight();
+        this.hideSidebar(); // Sembunyikan sidebar juga jika sungai tidak terlihat
+    }
+    this.adjustStylesForZoom(); // Pastikan style terupdate jika visibilitas berubah
+    console.log(`👁️ Layer Sungai: ${show ? 'Tampil' : 'Sembunyi'}`);
+  },
+
+  // Fungsi untuk menampilkan/menyembunyikan layer batas wilayah
+  toggleBoundaryLayer(show) {
+    this.isBoundaryLayerVisible = show;
+    if (this.boundariesLayer) {
+      if (show && !this.map.hasLayer(this.boundariesLayer)) {
+        this.boundariesLayer.addTo(this.map);
+        this.boundariesLayer.bringToBack(); // Pastikan batas wilayah di belakang
+      } else if (!show && this.map.hasLayer(this.boundariesLayer)) {
+        this.map.removeLayer(this.boundariesLayer);
+      }
+    }
+    // Jika layer batas wilayah disembunyikan, otomatis clear filter wilayah
+    if (!show) {
+        this.clearBoundarySelection(); // Ini juga membersihkan highlight boundary
+    }
+    this.adjustStylesForZoom(); // Pastikan style terupdate jika visibilitas berubah
+    console.log(`👁️ Layer Batas Wilayah: ${show ? 'Tampil' : 'Sembunyi'}`);
   },
 
   // === UI FEEDBACK ===
@@ -778,7 +875,7 @@ const EnhancedRiverApp = {
     alert(`Error: ${message}`);
   },
 
-  // === NEW: SIDEBAR FUNCTIONS ===
+  // === SIDEBAR FUNCTIONS ===
   // Fungsi untuk menampilkan detail sungai di sidebar
   showRiverDetailsInSidebar(properties) {
     const sidebar = this.elements.riverSidebar;

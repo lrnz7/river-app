@@ -22,13 +22,13 @@ html, body {
   transition: margin-right 0.3s ease-out; /* Animasi untuk margin saat sidebar terbuka */
 }
 
-/* Kontainer untuk semua kontrol UI di pojok kiri atas */
+/* Kontainer utama untuk semua kontrol UI di pojok kiri atas */
 .controls-container {
   position: absolute;
   top: 10px;
   left: 10px;
   z-index: 10; /* Pastikan kontrol di atas peta */
-  display: flex; /* Menggunakan flexbox untuk layout horizontal */
+  display: flex; /* Menggunakan flexbox untuk layout vertikal */
   flex-direction: column; /* Kontrol ditumpuk vertikal */
   gap: 10px; /* Jarak antar elemen kontrol */
   background-color: rgba(255, 255, 255, 0.9); /* Latar belakang semi-transparan */
@@ -172,25 +172,82 @@ html, body {
   border: 0;
 }
 
-/* NEW: Sidebar styles */
+/* Layer Control Panel Styles */
+.layer-control-panel {
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.layer-control-panel h4 {
+  margin: 0 0 5px 0;
+  color: #333;
+  font-size: 1.1em;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+.layer-control-panel .control-button {
+  padding: 8px 12px;
+  background-color: #6c757d; /* Warna abu-abu netral */
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.2s ease;
+  text-align: center;
+}
+
+.layer-control-panel .control-button:hover {
+  background-color: #5a6268;
+}
+
+.layer-control-panel .layer-toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.layer-control-panel .layer-toggle-group label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+  color: #333;
+  cursor: pointer;
+}
+
+.layer-control-panel .layer-toggle-group input[type="checkbox"] {
+  /* Default checkbox styling */
+  transform: scale(1.2); /* Sedikit membesar */
+  cursor: pointer;
+}
+
+
+/* Sidebar styles */
 .river-sidebar {
-  position: fixed; /* Posisi tetap di layar */
+  position: fixed;
   top: 0;
-  right: -350px; /* Sembunyikan di luar layar (sesuaikan lebar sidebar) */
-  width: 330px; /* Lebar sidebar */
+  right: -350px;
+  width: 330px;
   height: 100%;
   background-color: white;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.2); /* Bayangan ke kiri */
-  z-index: 1000; /* Pastikan di atas peta dan kontrol lain */
-  transition: right 0.3s ease-out; /* Animasi geser */
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  transition: right 0.3s ease-out;
   padding: 20px;
-  overflow-y: auto; /* Aktifkan scroll kalau kontennya panjang */
-  pointer-events: none; /* Awalnya tidak bisa diklik */
+  overflow-y: auto;
+  pointer-events: none;
 }
 
 .river-sidebar.open {
-  right: 0; /* Geser masuk ke dalam layar */
-  pointer-events: auto; /* Aktifkan interaksi saat terbuka */
+  right: 0;
+  pointer-events: auto;
 }
 
 .sidebar-close-btn {
@@ -205,14 +262,14 @@ html, body {
 }
 
 .sidebar-close-btn:hover {
-  color: #dc3545; /* Warna merah saat hover */
+  color: #dc3545;
 }
 
 .sidebar-content h3 {
   margin-top: 0;
-  color: #007bff; /* Warna biru untuk judul */
+  color: #007bff;
   font-size: 1.5em;
-  border-bottom: 2px solid #eee; /* Garis bawah pemisah */
+  border-bottom: 2px solid #eee;
   padding-bottom: 10px;
   margin-bottom: 15px;
 }
@@ -226,8 +283,8 @@ html, body {
 
 /* Optional: Menyesuaikan tampilan peta saat sidebar terbuka */
 body.sidebar-open #map {
-  margin-right: 330px; /* Sesuaikan margin peta saat sidebar buka */
-  transition: margin-right 0.3s ease-out; /* Animasi margin */
+  margin-right: 330px;
+  transition: margin-right 0.3s ease-out;
 }
 
 /* Style untuk pop-up Leaflet (jika masih digunakan untuk info singkat) */
@@ -252,4 +309,31 @@ body.sidebar-open #map {
 /* Style untuk batas wilayah yang dipilih */
 .selected-boundary {
   /* Ini akan diatur di JS menggunakan setStyle() */
+}
+
+/* Style untuk tooltip batas wilayah */
+.leaflet-tooltip.boundary-tooltip {
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-size: 0.8em;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.leaflet-tooltip-bottom:before {
+    border-bottom-color: rgba(0, 0, 0, 0.7);
+}
+
+.leaflet-tooltip-top:before {
+    border-top-color: rgba(0, 0, 0, 0.7);
+}
+
+.leaflet-tooltip-left:before {
+    border-left-color: rgba(0, 0, 0, 0.7);
+}
+
+.leaflet-tooltip-right:before {
+    border-right-color: rgba(0, 0, 0, 0.7);
 }
