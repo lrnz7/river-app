@@ -4,7 +4,7 @@
 
 ## 🔍 Deskripsi Proyek
 
-Ini adalah aplikasi web interaktif berbasis **Leaflet.js** yang menampilkan data sungai dan batas wilayah administratif di kawasan Jabodetabek. Proyek ini dibuat sebagai bagian dari portofolio pribadi untuk menunjukkan potensi penggunaan teknologi dalam menyelesaikan masalah lingkungan dan tata kota secara real-time.
+Ini adalah aplikasi web interaktif berbasis **Leaflet.js** yang menampilkan data sungai dan batas wilayah administratif di kawasan Jabodetabek. Proyek ini dibuat sebagai bagian dari portofolio pribadi saya untuk menunjukkan potensi penggunaan teknologi dalam menyelesaikan masalah lingkungan dan tata kota secara real-time.
 
 Proyek ini menampilkan:
 - **Peta interaktif**
@@ -20,7 +20,7 @@ Proyek ini menampilkan:
 
 ## 🧠 Tujuan & Konteks
 
-Dibuat sebagai langkah awal Lorenzo Calvin menuju impian menjadi ... Proyek ini memadukan pemetaan geospasial dengan desain antarmuka web untuk menyelesaikan isu lingkungan secara data-driven dan transparan.
+Dibuat sebagai langkah awal saya menuju impian menjadi ... Proyek ini memadukan pemetaan geospasial dengan desain antarmuka web untuk menyelesaikan isu lingkungan secara data-driven dan transparan.
 
 ---
 
@@ -90,7 +90,7 @@ river-app/
 
 ## 📜 Lisensi & Atribusi
 
-Proyek ini **tidak open source bebas**. Jika ingin menggunakan atau memodifikasi data dan logika aplikasi, harap hubungi langsung Lorenzo Calvin.
+Proyek ini **tidak open source bebas**. Jika ingin menggunakan atau memodifikasi data dan logika aplikasi, harap hubungi langsung saya, Lorenzo Calvin.
 
 > “© Lorenzo Calvin – RiverApp | All data protected.”
 
@@ -110,6 +110,6 @@ Proyek ini **tidak open source bebas**. Jika ingin menggunakan atau memodifikasi
   - Dinas Lingkungan Hidup
   - Dinas Tata Ruang
   - Badan Informasi Geospasial
-- Semua data dan struktur sudah disederhanakan agar bisa digunakan secara efisien oleh publik dan pemerintah.
+- Semua data dan struktur sudah disederhanakan agar bisa digunakan secara efisien oleh publik maupun badan pemerintah.
 
 
